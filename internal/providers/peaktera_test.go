@@ -49,3 +49,33 @@ func TestPeakteraAPI(t *testing.T) {
 		t.Fatal("304 must validate retained offers", e)
 	}
 }
+
+func TestPeakteraResponseAge(t *testing.T) {
+	at := time.Now().UTC()
+	b := read(t, "peaktera.csv")
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Age", "3500")
+		w.Header().Set("ETag", `"v1"`)
+		if calls > 1 {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Write(b)
+	}))
+	defer server.Close()
+	f := &peakteraFeed{}
+	for i := 0; i < 2; i++ {
+		offers, e := f.load(context.Background(), Client(), server.URL, at)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if !offers[0].ObservedAt.Equal(at.Add(-3500 * time.Second)) {
+			t.Fatal("cached response reset the publication deadline", offers[0].ObservedAt)
+		}
+		if offers[0].Publishable(at.Add(101 * time.Second)) {
+			t.Fatal("cached response extended publication beyond one hour")
+		}
+	}
+}

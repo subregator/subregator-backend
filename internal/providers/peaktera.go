@@ -144,6 +144,7 @@ func (f *peakteraFeed) load(ctx context.Context, client *http.Client, endpoint s
 		if err != nil || age < 0 || age > 3600 {
 			return nil, errors.New("Peaktera cached response too old")
 		}
+		at = at.Add(-time.Duration(age) * time.Second)
 	}
 	if res.StatusCode == http.StatusNotModified && f.body != nil {
 		return ParsePeaktera(f.body, at)
