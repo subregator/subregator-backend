@@ -57,6 +57,7 @@ func Capabilities() []Definition {
 }
 
 type Metric struct {
+	Registration    *Registration   `json:"registration,omitempty"`
 	RetryAt         *time.Time      `json:"retry_at,omitempty"`
 	SourceUpdatedAt *time.Time      `json:"source_updated_at,omitempty"`
 	Observation     Observation     `json:"observation"`
@@ -143,7 +144,10 @@ func (s *Service) Inspect(ctx context.Context, q Query) (Report, error) {
 	return out, nil
 }
 func (s *Service) metric(ctx context.Context, target Target, q Query, name string) (out Metric) {
-	defer func() { out.Observation = metricObservation(out, target, q, time.Now()) }()
+	defer func() {
+		out = decorateRegistration(out, target)
+		out.Observation = metricObservation(out, target, q, time.Now())
+	}()
 	d := definitions[name]
 	m := s.initialMetric(target, name)
 	if m.Status != "pending" {
@@ -158,6 +162,12 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 				s.persistenceFailed()
 			}
 			if e == nil && found && json.Unmarshal(b, &previous) == nil && time.Now().Before(expires) {
+				if name == "rdap" {
+					if _, err := normalizeRDAP(previous.Data, previous.SourceURL, target); err != nil {
+						previous = Metric{}
+						return false
+					}
+				}
 				previous.Cached = true
 				return true
 			}
@@ -466,6 +476,13 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	m.Data = result.Data
 	m.ObservedAt = result.ObservedAt
 	m.SourceURL = result.SourceURL
+	m.Registration = result.Registration
+	if m.Name == "registration" {
+		m.Registration = normalizeWhois(m.Data, m.SourceURL, target)
+	}
+	if m.Registration != nil {
+		m.SourceUpdatedAt = registrationUpdatedAt(m.Registration)
+	}
 	return m
 }
 func (s *Service) origins(ctx context.Context, target Target, q Query) (string, []uint32, error) {

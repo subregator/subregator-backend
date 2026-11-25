@@ -101,26 +101,19 @@ func (s *Service) rdap(ctx context.Context, target Target) (Metric, error) {
 	if e != nil {
 		return Metric{}, e
 	}
-	var data struct {
-		Handle       string          `json:"handle"`
-		Name         string          `json:"name"`
-		Type         string          `json:"type"`
-		Country      string          `json:"country"`
-		StartAddress string          `json:"startAddress,omitempty"`
-		EndAddress   string          `json:"endAddress,omitempty"`
-		StartAutnum  uint32          `json:"startAutnum,omitempty"`
-		EndAutnum    uint32          `json:"endAutnum,omitempty"`
-		Entities     json.RawMessage `json:"entities,omitempty"`
-		Events       json.RawMessage `json:"events,omitempty"`
-		Notices      json.RawMessage `json:"notices,omitempty"`
-		Links        json.RawMessage `json:"links,omitempty"`
-		Status       []string        `json:"status,omitempty"`
-	}
+	var data rdapData
 	if e = json.Unmarshal(b, &data); e != nil || data.Handle == "" {
 		return Metric{}, errors.New("invalid RDAP response")
 	}
 	normalized, _ := json.Marshal(data)
-	return Metric{Data: normalized, ObservedAt: observedNow(), SourceURL: u}, nil
+	registration, err := normalizeRDAP(normalized, u, target)
+	if err != nil {
+		return Metric{}, err
+	}
+	if len(registration.AbuseContacts) == 0 {
+		s.abuseContactFallback(ctx, target, registration)
+	}
+	return Metric{Data: normalized, Registration: registration, SourceUpdatedAt: registrationUpdatedAt(registration), ObservedAt: observedNow(), SourceURL: u}, nil
 }
 func validRDAPBase(raw string) bool {
 	u, e := url.Parse(raw)

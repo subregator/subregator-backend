@@ -2150,6 +2150,9 @@
             "type": "string",
             "format": "date-time",
             "description": "Earliest retry allowed by a persisted source Retry-After response, if known."
+          },
+          "registration": {
+            "$ref": "#/components/schemas/Registration"
           }
         },
         "required": [
@@ -2385,7 +2388,8 @@
               "exact",
               "covering",
               "overlap",
-              "origin_asns"
+              "origin_asns",
+              "contained"
             ]
           },
           "asn": {
@@ -2665,6 +2669,273 @@
         ],
         "additionalProperties": false,
         "description": "Process-local collection health for per-check TTL scheduling. Source Retry-After and DROP reservations survive cache eviction in separate storage. Counters reset on restart; no prefixes, credentials or arbitrary upstream URLs are returned."
+      },
+      "RegistryRange": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ip",
+              "asn"
+            ]
+          },
+          "resource": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "covering",
+              "contained",
+              "overlap"
+            ]
+          },
+          "start_address": {
+            "type": "string"
+          },
+          "end_address": {
+            "type": "string"
+          },
+          "start_asn": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "end_asn": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "required": [
+          "kind",
+          "resource",
+          "relation"
+        ],
+        "additionalProperties": false
+      },
+      "RegistryEntity": {
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "registrant",
+              "referenced"
+            ]
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "role",
+          "statuses"
+        ],
+        "additionalProperties": false
+      },
+      "RegistryEvent": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "description": "Validated source date, preserved as RFC3339 timestamp or YYYY-MM-DD. Day-only values are not converted into invented timestamps."
+          }
+        },
+        "required": [
+          "action",
+          "date"
+        ],
+        "additionalProperties": false
+      },
+      "RegistryRecord": {
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "range": {
+            "$ref": "#/components/schemas/RegistryRange"
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryEntity"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryEvent"
+            }
+          }
+        },
+        "required": [
+          "source_url",
+          "range",
+          "statuses",
+          "entities",
+          "events"
+        ],
+        "additionalProperties": false
+      },
+      "AbuseContact": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "entity_handle": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "rdap",
+              "whois",
+              "ripe_stat_abuse_contact_finder"
+            ]
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "verification": {
+            "type": "string",
+            "enum": [
+              "not_verified"
+            ]
+          }
+        },
+        "required": [
+          "email",
+          "source",
+          "source_url",
+          "resource",
+          "verification"
+        ],
+        "additionalProperties": false
+      },
+      "Registration": {
+        "type": "object",
+        "properties": {
+          "rir": {
+            "type": "string",
+            "enum": [
+              "ARIN",
+              "RIPE NCC",
+              "APNIC",
+              "LACNIC",
+              "AFRINIC"
+            ]
+          },
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "rdap",
+              "whois"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "unknown"
+            ]
+          },
+          "authorities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryRecord"
+            }
+          },
+          "abuse_contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AbuseContact"
+            }
+          },
+          "abuse_status": {
+            "type": "string",
+            "enum": [
+              "published_unverified",
+              "not_published",
+              "unavailable"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "semantics": {
+            "type": "string",
+            "enum": [
+              "public_registry_records_not_beneficial_ownership_or_selling_authority"
+            ]
+          }
+        },
+        "required": [
+          "source_kind",
+          "completeness",
+          "authorities",
+          "records",
+          "abuse_contacts",
+          "abuse_status",
+          "issues",
+          "semantics"
+        ],
+        "additionalProperties": false,
+        "description": "Normalized current registry evidence; record range and source distinguish exact, covering and partial query coverage. Network name, registered entity, seller and origin ASN are separate concepts. Contacts are published but not verified; source dates do not prove ownership or selling authority."
       }
     }
   }
