@@ -122,7 +122,7 @@ func (f *dropFeed) check(ctx context.Context, s *Service, prefix netip.Prefix, n
 	}
 
 	if s.network && !f.pendingSave && !now.Before(f.Next) {
-		release, err := s.acquireRequest(ctx)
+		release, err := s.acquireRequest(context.WithValue(ctx, sourceBudgetKey{}, source))
 		if err != nil {
 			f.Next = now.Add(time.Minute)
 		} else {

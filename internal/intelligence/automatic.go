@@ -6,11 +6,8 @@ import (
 	"log/slog"
 	"net/netip"
 	"slices"
-	"sort"
 	"sync"
 	"time"
-
-	"github.com/subregator/subregator-backend/internal/catalog"
 )
 
 type Check struct {
@@ -41,16 +38,18 @@ var automaticChecks = []string{"prefix_overview", "rpki", "routing_status", "reg
 
 // Automatic is written only by Run; readers never schedule upstream work.
 type Automatic struct {
-	service *Service
-	mu      sync.RWMutex
-	reports map[string]OfferChecks
-	due     map[string]time.Time
-	drop    map[bool]*dropFeed
-	metrics map[string][]Metric
+	service  *Service
+	mu       sync.RWMutex
+	reports  map[string]OfferChecks
+	due      map[string]time.Time
+	drop     map[bool]*dropFeed
+	metrics  map[string][]Metric
+	jobs     map[string]map[string]scheduledCheck
+	evidence map[string]map[string]Metric
 }
 
 func NewAutomatic(s *Service) *Automatic {
-	return &Automatic{service: s, reports: map[string]OfferChecks{}, due: map[string]time.Time{}, drop: map[bool]*dropFeed{true: {}, false: {}}, metrics: map[string][]Metric{}}
+	return &Automatic{service: s, reports: map[string]OfferChecks{}, due: map[string]time.Time{}, drop: map[bool]*dropFeed{true: {}, false: {}}, metrics: map[string][]Metric{}, jobs: map[string]map[string]scheduledCheck{}, evidence: map[string]map[string]Metric{}}
 }
 
 func unknownCheck() Check {
@@ -76,82 +75,6 @@ func (a *Automatic) Get(resource string) OfferChecks {
 	r.RPKI.Observation = checkObservation(r.RPKI, resource, "rpki", now)
 	r.Blocklist.Observation = checkObservation(r.Blocklist, resource, "spamhaus_drop", now)
 	return r
-}
-
-func (a *Automatic) Run(ctx context.Context, store *catalog.Store) {
-	// Ten upstream calls per prefix leaves room for multi-origin RPKI and bootstrap requests.
-	interval := max(100*time.Millisecond, time.Minute*10/time.Duration(a.service.rpm))
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	cursor := ""
-	for {
-		active := publishedPrefixes(store)
-		keys := make([]string, 0, len(active))
-		for key := range active {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		a.mu.Lock()
-		for key := range a.reports {
-			if !active[key] {
-				delete(a.reports, key)
-				delete(a.due, key)
-				delete(a.metrics, key)
-			}
-		}
-		a.mu.Unlock()
-		for _, key := range keys {
-			if _, ok := a.due[key]; ok {
-				continue
-			}
-			if a.service.cache != nil {
-				b, _, found, e := a.service.cache.CacheGet(ctx, "automatic:"+key)
-				var r OfferChecks
-				if e == nil && found && json.Unmarshal(b, &r) == nil && r.Resource == key {
-					a.mu.Lock()
-					a.reports[key] = r
-					a.mu.Unlock()
-				}
-			}
-			a.mu.Lock()
-			a.due[key] = time.Now()
-			a.mu.Unlock()
-		}
-		start := sort.SearchStrings(keys, cursor)
-		for i := 0; i < len(keys); i++ {
-			key := keys[(start+i)%len(keys)]
-			if time.Now().Before(a.due[key]) {
-				continue
-			}
-			if ctx.Err() != nil {
-				return
-			}
-			prefix := netip.MustParsePrefix(key)
-			blocklist := a.drop[prefix.Addr().Is4()].check(ctx, a.service, prefix, time.Now())
-			r := Report{Resource: Target{Value: key, Kind: "prefix"}, Semantics: "source_observations_not_ownership_or_reachability_guarantees"}
-			q := Query{Resource: key}
-			workCtx := context.WithValue(ctx, automaticBudgetKey{}, true)
-			a.publish(ctx, key, r, blocklist)
-			for _, name := range automaticChecks {
-				m := a.service.metric(workCtx, r.Resource, q, name)
-				if ctx.Err() != nil {
-					return
-				}
-				r.Metrics = append(r.Metrics, m)
-				if name == "prefix_overview" {
-					q.overview = &m
-				}
-				a.publish(ctx, key, r, blocklist)
-			}
-			cursor = key + "\x00"
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
 }
 
 func sameOrigins(a, b []uint32) bool {
@@ -221,7 +144,9 @@ func (a *Automatic) publish(ctx context.Context, key string, r Report, blocklist
 		}
 	}
 	a.mu.Lock()
-	a.due[key] = due
+	if len(a.jobs[key]) == 0 {
+		a.due[key] = due
+	}
 	samples := make([]Metric, len(r.Metrics))
 	for i, m := range r.Metrics {
 		samples[i] = Metric{Name: m.Name, Status: m.Status, ObservedAt: m.ObservedAt, ExpiresAt: m.ExpiresAt}
@@ -233,6 +158,9 @@ func (a *Automatic) publish(ctx context.Context, key string, r Report, blocklist
 
 func metricCheck(m Metric, now time.Time) Check {
 	c := Check{Status: "unavailable", Freshness: "unknown", ObservedAt: m.ObservedAt, ExpiresAt: m.ExpiresAt, Source: m.Source, SourceURL: m.SourceURL, Coverage: m.Coverage, Reason: m.Error}
+	if m.Status == "pending" {
+		c.Status = "pending"
+	}
 	if m.ObservedAt != nil {
 		c.Freshness = "stale"
 	}
