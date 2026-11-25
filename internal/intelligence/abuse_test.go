@@ -406,8 +406,10 @@ func TestAbuseAddressBoundAndNarrowScope(t *testing.T) {
 	if err != nil || !d.Truncated || len(d.Addresses) > 256 || d.Status != "partial" {
 		t.Fatal(d, err)
 	}
-	target, _ = ParseTarget("1.1.1.2/32")
-	raw, _ := json.Marshal(map[string]any{"data": map[string]any{"networkAddress": "1.1.1.2", "netmask": "255.255.255.255", "minAddress": "1.1.1.2", "maxAddress": "1.1.1.2", "numPossibleHosts": 1, "reportedAddress": []map[string]any{abuseRow(now)}}})
+	row := abuseRow(now)
+	row["ipAddress"] = "1.1.1.1"
+	target, _ = ParseTarget("1.1.1.0/31")
+	raw, _ := json.Marshal(map[string]any{"data": map[string]any{"networkAddress": "1.1.1.0", "netmask": "255.255.255.254", "minAddress": "1.1.1.0", "maxAddress": "1.1.1.1", "numPossibleHosts": 2, "reportedAddress": []map[string]any{row}}})
 	d, err = normalizeAbuse(raw, target, now, now)
 	if err != nil || d.ScopeRelation != "exact" || d.ReportCount != 3 || d.Status != "reports_observed" {
 		t.Fatal(d, err)
@@ -423,5 +425,54 @@ func TestAbuseRegressionOutOfWindowSourceDateIsPreserved(t *testing.T) {
 	d, err := normalizeAbuse([]byte(abuseFixture(now, false, row)), target, now, now)
 	if err != nil || d.Status != "partial" || d.Addresses[0].LatestReportAt == nil || !d.Addresses[0].LatestReportAt.Equal(date) {
 		t.Fatal("source report time discarded instead of retained as partial")
+	}
+}
+
+func TestAbuseLiveScopeRegression(t *testing.T) {
+	for _, tc := range []struct {
+		prefix string
+		want   bool
+	}{
+		{"1.1.1.0/24", true}, {"1.1.1.0/31", true}, {"1.1.1.1/32", false},
+		{"2001:4860:4860::8800/120", true}, {"2001:4860:4860::8888/127", true}, {"2001:4860:4860::8888/128", false}, {"2001:4860:4860::8800/119", false},
+	} {
+		target, err := ParseTarget(tc.prefix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := abuseSupported(target); got != tc.want {
+			t.Errorf("%s supported=%v; configured bounded scope %v", tc.prefix, got, tc.want)
+		}
+	}
+}
+
+func TestAbuseIPv6BoundedNormalization(t *testing.T) {
+	now := time.Now().UTC()
+	for _, tc := range []struct {
+		prefix, mask, start, end string
+		hosts                    uint64
+	}{
+		{"2001:4860:4860::8800/120", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff00", "2001:4860:4860::8800", "2001:4860:4860::88ff", 256},
+		{"2001:4860:4860::8888/127", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe", "2001:4860:4860::8888", "2001:4860:4860::8889", 2},
+	} {
+		target, err := ParseTarget(tc.prefix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := abuseRow(now)
+		row["ipAddress"] = tc.start
+		data := map[string]any{"networkAddress": tc.start, "netmask": tc.mask, "minAddress": tc.start, "maxAddress": tc.end, "numPossibleHosts": tc.hosts, "reportedAddress": []map[string]any{row}}
+		raw, _ := json.Marshal(map[string]any{"data": data})
+		d, err := normalizeAbuse(raw, target, now, now)
+		if err != nil || d.ScopeRelation != "exact" || d.Completeness != "complete" || d.ReportCount != 3 || d.Addresses[0].Address != tc.start {
+			t.Fatal(d, err)
+		}
+		data["maxAddress"] = tc.start
+		data["numPossibleHosts"] = 1
+		raw, _ = json.Marshal(map[string]any{"data": data})
+		d, err = normalizeAbuse(raw, target, now, now)
+		if err != nil || d.Completeness != "partial" || d.ScopeRelation != "contained" {
+			t.Fatal("IPv6 subset became full-prefix coverage", d, err)
+		}
 	}
 }

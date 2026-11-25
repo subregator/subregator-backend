@@ -31,7 +31,7 @@ type Definition struct {
 }
 
 var definitions = map[string]Definition{
-	"abuse":                {Name: "abuse", Source: "AbuseIPDB", Description: "Optional source report summaries for IPv4 /24 or longer, 30-day window; off until account and data use are approved", Coverage: "Source-reported addresses in the returned search range; not cleanliness, tenant attribution or resolution", TTLSeconds: 86400, Kinds: []string{"prefix"}},
+	"abuse":                {Name: "abuse", Source: "AbuseIPDB", Description: "Optional source report summaries for IPv4 /24-/31 and IPv6 /120-/127, 30-day window; off until account and data use are approved", Coverage: "Source-reported addresses in the returned search range; not cleanliness, tenant attribution or resolution", TTLSeconds: 86400, Kinds: []string{"prefix"}},
 	"irr":                  {Name: "irr", Source: "IRRexplorer", Description: "IRR route/route6 objects compared with observed BGP origins; optional and off until source access is approved", Coverage: "IRRexplorer mirrored registries; not ownership or universal routing acceptance", TTLSeconds: 3600, Kinds: []string{"prefix"}},
 	"asn_rank":             {Name: "asn_rank", Source: "CAIDA ASRank", Description: "Free customer-cone topology ranking of origin ASNs", Coverage: "ASN topology rank, not subnet reputation, traffic or packet reachability", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
 	"prefix_overview":      {Name: "prefix_overview", Source: "RIPEstat", Description: "Announced prefix and origin ASNs", Coverage: "RIS collector observations; not a packet reachability test", TTLSeconds: 300, Kinds: []string{"ip", "prefix"}},

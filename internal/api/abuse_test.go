@@ -107,3 +107,38 @@ func TestAbuseRESTMCPPostgresRestartAndGate(t *testing.T) {
 	validateOpenAPI(t, "NetworkReport", gated)
 	validateOpenAPI(t, "NetworkMetric", intelligence.Metric{Name: "abuse", Status: "plan_limited", Data: json.RawMessage(`null`), Observation: intelligence.Observation{CollectionStatus: "plan_limited", Freshness: "unknown", Completeness: "unknown", Scope: intelligence.ObservationScope{Requested: detail.Prefix, Kind: "prefix", Relation: "unknown"}}})
 }
+
+func TestAbuseIPv6CachedRESTContract(t *testing.T) {
+	d, err := history.Open(testdb.URL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	now := time.Now().UTC()
+	expires := now.Add(24 * time.Hour)
+	prefix := "2001:4860:4860::8888/127"
+	detail := intelligence.AbuseObservation{Prefix: prefix, Status: "no_reports_in_window", Completeness: "complete", ScopeRelation: "exact", RangeStart: "2001:4860:4860::8888", RangeEnd: "2001:4860:4860::8889", PossibleHosts: 2, WindowDays: 30, WindowStart: now.Add(-30 * 24 * time.Hour), WindowEnd: now, WindowBasis: "local_request_bounds", IngestedAt: now, AddressLimit: 256, Addresses: []intelligence.ReportedAddress{}, DetailsCoverage: "not_collected", Semantics: "source_reports_not_cleanliness_tenant_attribution_or_resolution"}
+	raw, _ := json.Marshal(detail)
+	metric := intelligence.Metric{Name: "abuse", Status: "ok", Source: "AbuseIPDB", ObservedAt: &now, ExpiresAt: &expires, Data: raw}
+	payload, _ := json.Marshal(metric)
+	key := `{"Resource":"` + prefix + `","Name":"abuse","Start":"","End":"","Version":"","ASN":0}`
+	if err := d.CachePut(context.Background(), key, payload, expires); err != nil {
+		t.Fatal(err)
+	}
+	checks := intelligence.New(d, false, "", 120)
+	checks.EnableAbuseIPDB("fixture-key")
+	h := Handler(store(t, 1), "", Services{Intelligence: checks})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/network?resource=2001:4860:4860::8888%2F127&checks=abuse", nil))
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	var report intelligence.Report
+	if err := json.Unmarshal(w.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Partial || report.Metrics[0].Abuse == nil || report.Metrics[0].Abuse.Status != "no_reports_in_window" || report.Metrics[0].Observation.Scope.Relation != "exact" {
+		t.Fatal("IPv6 cached scope lost")
+	}
+	validateOpenAPI(t, "NetworkReport", report)
+}

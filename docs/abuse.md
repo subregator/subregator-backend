@@ -1,16 +1,20 @@
 # Source abuse observations
 
-The optional `abuse` check reads AbuseIPDB check-block summaries for a current public IPv4 prefix. It returns source claims about addresses and reports, not a safety score, a clean bill of health, attribution to a current tenant or proof of resolution. A report disappearing from a rolling window does not prove it was resolved.
+The optional `abuse` check reads AbuseIPDB check-block summaries for a current public IPv4 or bounded IPv6 prefix. It returns source claims about addresses and reports, not a safety score, a clean bill of health, attribution to a current tenant or proof of resolution. A report disappearing from a rolling window does not prove it was resolved.
 
 ## Access gate and scope
 
 `SUBREGATOR_ABUSEIPDB=false` is the default. `SUBREGATOR_ABUSEIPDB_KEY` is environment-only; no key flag, query parameter, public field or log entry is added. Configure both an approved key and `SUBREGATOR_ABUSEIPDB=true` (or `-abuseipdb=true`) only after confirming account entitlement, quota, public-display and cache-retention rights. An absent key remains `not_configured`, even with the enablement flag. An off gate suppresses collection and publication of retained abuse observations. Configuration is set before workers start. `SUBREGATOR_NETWORK=false` still prevents upstream requests.
 
-No matching key was found in the environment variable names or the original checkout's local environment configuration examined on 2026-11-25; values were not printed. No authenticated live pilot was possible. No plan, permission, source capacity or production readiness is claimed. The source therefore remains off. The first acceptance criterion in BE-08 remains open until the account pilot and terms are verified.
+The owner provided a key for evaluation on 2026-11-25. Authenticated requests and a final request through the Go collector succeeded. The key was used transiently without writing it to the repository, environment files, command-line arguments or issues. No production credential location has been provisioned and no source collection has been enabled. The dashboard and response headers agree on 100 check-block requests/day; the exact billing plan and any separate agreement were not inspected.
 
-The provisional adapter uses one fixed GET endpoint, `https://api.abuseipdb.com/api/v2/check-block`, with a 30-day `maxAgeInDays` and the exact canonical requested prefix. It accepts IPv4 /24 through /32. Larger networks are not split or sampled. IPv6, individual IP/ASN resources, historical/version parameters and proposed-ASN validation are explicitly `not_applicable`. The API describes IPv6 support, but account-specific family limits and usable full-prefix responses have not been piloted; the adapter does not enumerate IPv6 space.
+The fixed GET endpoint is `https://api.abuseipdb.com/api/v2/check-block`, with a 30-day `maxAgeInDays` and exact canonical requested prefix. Supported local scope is IPv4 /24–/31 and IPv6 /120–/127, containing 2–256 addresses. No address enumeration or subnet splitting is used. Larger ranges are intentionally not queried, even when accepted upstream. Single-host /32 and /128 requests return 422 upstream with instructions to use the separate `/check` endpoint; the adapter now rejects them locally rather than silently switching endpoints or quota pools. Historical/version parameters and proposed-ASN validation remain not applicable.
 
-The vendor documents different plan allowances. This adapter deliberately implements the narrow common request shape; it does not infer a subscription from a key or add plan selection before a pilot. Verify current entitlement directly before enabling. A 402 response is exposed as `plan_limited` and paused for a day before revalidation; it never becomes an empty result or a permanent silent suppression. Source-wide 429 Retry-After windows survive restart; the source reset epoch is used when Retry-After is absent.
+The account accepted IPv4 /24, /30, /31 and IPv6 /120, /127 with 30 days. IPv4 /23 and a 31-day window returned 402. IPv6 /119 (512 addresses) also succeeded upstream, but is outside our deliberate local bound. These observations establish only the tested shapes and account behavior; they do not establish a universal IPv6 plan limit or broad-family coverage.
+
+HTTP 402 is `plan_limited` and paused for a day before revalidation; it never becomes an empty result or permanent silent suppression. Source-wide 429 windows survive restart; the source reset epoch is used when Retry-After is absent.
+
+The [published terms](https://www.abuseipdb.com/legal.html), reviewed on 2026-11-25, distinguish evaluation/non-commercial Free use from commercial use and separately restrict exploitation/redistribution of API data without express permission. A successful key does not establish permission to publish an aggregator API. No plan upgrade, permission request or source-data publication was performed; commercial/public display and cache-retention conditions remain an enablement blocker.
 
 ## REST, MCP and offer contract
 
@@ -38,10 +42,24 @@ The existing PostgreSQL JSON cache and compact reports store only normalized sum
 
 ## Validation and remaining work
 
-Synthetic fixtures cover exact and subset IPv4 scope, /32, explicitly unsupported IPv6/broad/historical queries, empty/positive/partial results, source times, duplicates, mismatched ranges, pagination/truncation, overflow, 256-address bounds, missing fields, error envelopes, auth/plan/quota errors, quota restart, header secrecy, cancellation, hidden prefixes, cached-only REST/MCP, OpenAPI and PostgreSQL/report restart. They are not evidence of live compatibility.
+Synthetic fixtures cover exact and subset IPv4/IPv6 scope, narrow /31 and /127, locally rejected /32 and /128 single hosts, broader/historical queries, empty/positive/partial results, source times, duplicates, mismatched ranges, pagination/truncation, overflow, 256-address bounds, missing fields, error envelopes, auth/plan/quota errors, quota restart, header secrecy, cancellation, hidden prefixes, cached-only REST/MCP, OpenAPI and PostgreSQL/report restart. These fixtures remain synthetic; live compatibility evidence is limited to the pilot below.
 
 The unchanged BE-07 base and this branch must pass the same required checks. Review regressions are demonstrated failing before fixes, then rerun with race tests. Container smoke covers local runtime behavior with network collection disabled; it does not establish live account access or permission.
 
-Next external step: obtain an approved account/key and confirm query quota, family/range limits, publication and retention conditions; pilot representative supported scopes before enablement. Revisit the plan/window against actual eligible inventory and BE-02 capacity. For example, the documented Standard allowance of 100 block queries/day would require at least ten days for a cold 1,000-prefix catalogue, before retries. That computed floor is incompatible with complete daily refresh of that catalogue and is not measured throughput or an account-specific entitlement.
+## Authenticated pilot — 2026-11-25
 
-Official reference: [AbuseIPDB API v2: block queries, plan limits, rate handling and security](https://docs.abuseipdb.com/). Review date: 2026-11-25. Hosted CI for unpublished commits, authenticated pilot, full source coverage, public reuse rights, stand and production remain unverified.
+Thirteen read-only check-block requests were used, including validation failures and one final request through the actual Go collector. Last observed quota remaining: 87/100, with reset epoch supplied by the source. No per-IP check/report/detail call, write, account change or purchase occurred.
+
+| Request | Observed result |
+| --- | --- |
+| IPv4 /24, /30, /31, 30 days | HTTP 200; returned metadata identified the complete requested address range. |
+| IPv6 /120 and /127, 30 days | HTTP 200; complete requested range, accepted by the Go normalizer. |
+| IPv4 /32 and IPv6 /128 | HTTP 422; source requires a different endpoint for a single host. |
+| IPv4 /23 or 31-day window | HTTP 402; account query limits. |
+| IPv6 /119 | HTTP 200; 512-address scope intentionally unsupported locally. |
+
+The Go normalizer accepted five supported captured response shapes while preserving exact scope, source report dates and ingestion time; it rejected the successful upstream /119 response because it exceeds the local work bound. The actual Go collector also completed one authenticated IPv6 /127 request with its real transport and Key header. Sanitized pilot payloads remain local private test artifacts; actual report records and credentials are not committed or published in issues.
+
+Next external step: confirm commercial/public-display and cache-retention conditions, then choose an approved capacity/plan for eligible inventory before enablement. With the observed 100-query/day quota, a cold 1,000-supported-prefix catalogue needs at least ten days before retries; full daily refresh of that example is impossible. This is a computed quota floor, not measured throughput. Hosted CI for unpublished commits, broader live coverage, public use rights, stand and production remain unverified.
+
+Official references: [API v2](https://docs.abuseipdb.com/), [terms](https://www.abuseipdb.com/legal.html). Review date: 2026-11-25.

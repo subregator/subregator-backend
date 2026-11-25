@@ -216,7 +216,7 @@ func (s *Service) initialMetric(target Target, name string, q Query) Metric {
 		m.Error = "AbuseIPDB requires an approved account, key, quota and publication/retention rights"
 	} else if name == "abuse" && (!abuseSupported(target) || q.ASN != 0 || q.StartTime != "" || q.EndTime != "" || q.Version != "") {
 		m.Status = "not_applicable"
-		m.Error = "Abuse collection supports current IPv4 prefixes /24 or longer with a fixed 30-day window; IPv6, historical and proposed-ASN queries are unsupported"
+		m.Error = "Abuse collection supports current IPv4 /24-/31 or IPv6 /120-/127 with a fixed 30-day window; single-host, broader, historical and proposed-ASN queries are unsupported"
 	} else if name == "irr" && !s.irrEnabled {
 		m.Status = "not_configured"
 		m.Error = "IRR source access, quotas and publication/retention rights are not configured"

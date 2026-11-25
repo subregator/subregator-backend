@@ -29,7 +29,7 @@ The bounded network cache is not a durable archive of checks. Existing history c
 | BE-05 | P0 | Normalize RIR, registration and abuse contacts | BE-01, BE-03, BE-04 | Merged in #21–#23; external verification limits remain |
 | BE-06 | P0 | Complete BGP and RPKI explanations | BE-03, BE-04 | Implemented locally; delivery pending |
 | BE-07 | P0 | Add IRR consistency checks | BE-01, BE-03, BE-04, BE-06 | Implemented locally; source enablement and delivery pending |
-| BE-08 | P0 | Add subnet abuse observations | BE-01, BE-03, BE-04 | Implemented locally; account pilot, terms and delivery pending |
+| BE-08 | P0 | Add subnet abuse observations | BE-01, BE-03, BE-04 | Implemented locally; pilot verified; public-use terms and delivery pending |
 | BE-09 | P0 | Extend blocklist coverage beyond DROP | BE-01, BE-03, BE-04 | Planned |
 | BE-10 | P0 | Store durable check observations and changes | BE-01, BE-03 | Planned |
 | BE-11 | P1 | Expose current sellers and price history by subnet | BE-03 | Planned |
@@ -106,13 +106,13 @@ Local adapter, comparison, cached REST/MCP/OpenAPI and persistence are implement
 
 ### BE-08 — Add subnet abuse observations
 
-- [ ] Pilot AbuseIPDB `check-block`; return reported-IP count, report count, latest report, query window and source findings. Retrieve per-IP categories/details only where supported and needed, using bounded work.
+- [x] Pilot AbuseIPDB `check-block`; return reported-IP count, report count, latest report, query window and source findings. Retrieve per-IP categories/details only where supported and needed, using bounded work.
 - [x] Treat prefix-size/time limits, pagination, incomplete responses and IPv6 limitations explicitly. Do not enumerate IPv6 space or silently sample a subnet and claim full coverage.
 - [x] Preserve source report time and ingestion time. Zero reports in a window is not a clean bill of health; reports aging out do not establish resolution. Avoid automatically republishing raw complaint logs or personal data.
 - **Done when:** tests cover quota/auth failures, size limits, empty results, truncation, bounded detail collection and missing timestamps. Past reports are not attributed to a new tenant without evidence.
 - **Next step:** choose a plan/window from the pilot and BE-02 capacity results; confirm retention and public-display rights.
 
-Local normalized collection, cached REST/MCP/OpenAPI, offer reports, configuration and persistence are implemented. The source is off: no approved key/account pilot or public reuse/retention rights are verified. Current integration is limited to IPv4 /24 or longer, 30 days, one request and no complaint-detail calls; IPv6 is explicitly unsupported pending pilot. See [abuse contract](abuse.md) and issue #10 for the open acceptance criterion and evidence.
+Local normalized collection, cached REST/MCP/OpenAPI, offer reports, configuration and persistence are implemented. The source is off pending public use/retention conditions. The authenticated pilot verified 100 block queries/day and bounded IPv4/IPv6 responses. Current local scope is IPv4 /24–/31 and IPv6 /120–/127, 30 days, one request and no complaint-detail calls; single hosts and larger ranges are not queried. See [abuse contract](abuse.md) and issue #10 for the open acceptance criterion and evidence.
 
 ### BE-09 — Extend blocklist coverage beyond DROP
 

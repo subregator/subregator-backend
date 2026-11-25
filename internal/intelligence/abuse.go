@@ -2,7 +2,6 @@ package intelligence
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"math"
@@ -55,7 +54,11 @@ func (s *Service) abuseConfigured() bool      { return s.abuseEnabled && s.abuse
 
 func abuseSupported(target Target) bool {
 	p, err := netip.ParsePrefix(target.Value)
-	return err == nil && target.Kind == "prefix" && p.Addr().Is4() && p.Bits() >= 24
+	if err != nil || target.Kind != "prefix" || p.Addr().Is4In6() {
+		return false
+	}
+	hostBits := p.Addr().BitLen() - p.Bits()
+	return hostBits >= 1 && hostBits <= 8
 }
 
 func (s *Service) abuse(ctx context.Context, target Target) (Metric, error) {
@@ -116,12 +119,11 @@ func normalizeAbuse(raw json.RawMessage, target Target, started, captured time.T
 		return nil, invalid
 	}
 	mask, err := netip.ParseAddr(d.Mask)
-	if err != nil || !mask.Is4() {
+	if err != nil {
 		return nil, invalid
 	}
-	maskBytes := mask.As4()
-	bits, total := net.IPMask(maskBytes[:]).Size()
-	if total != 32 || bits != p.Bits() || d.Hosts == nil || d.Reported == nil {
+	bits, total := net.IPMask(mask.AsSlice()).Size()
+	if total != p.Addr().BitLen() || bits != p.Bits() || d.Hosts == nil || d.Reported == nil {
 		return nil, invalid
 	}
 	minIP, e1 := netip.ParseAddr(d.Min)
@@ -129,16 +131,20 @@ func normalizeAbuse(raw json.RawMessage, target Target, started, captured time.T
 	if e1 != nil || e2 != nil || !p.Contains(minIP) || !p.Contains(maxIP) || minIP.Compare(maxIP) > 0 {
 		return nil, invalid
 	}
-	first := p.Addr().As4()
-	lastValue := binary.BigEndian.Uint32(first[:]) + uint32((uint64(1)<<uint(32-p.Bits()))-1)
-	minBytes, maxBytes := minIP.As4(), maxIP.As4()
-	minValue, maxValue := binary.BigEndian.Uint32(minBytes[:]), binary.BigEndian.Uint32(maxBytes[:])
+	lastBytes := p.Addr().As16()
+	lastBytes[15] |= byte((uint64(1) << uint(p.Addr().BitLen()-p.Bits())) - 1)
+	lastIP := netip.AddrFrom16(lastBytes)
+	if p.Addr().Is4() {
+		lastIP = lastIP.Unmap()
+	}
+	minBytes, maxBytes := minIP.As16(), maxIP.As16()
+
 	out := &AbuseObservation{Prefix: target.Value, Status: "no_reports_in_window", Completeness: "complete", ScopeRelation: "exact", RangeStart: minIP.String(), RangeEnd: maxIP.String(), PossibleHosts: *d.Hosts, WindowDays: abuseWindowDays, WindowStart: started.Add(-abuseWindowDays * 24 * time.Hour), WindowEnd: captured, WindowBasis: "local_request_bounds", IngestedAt: captured, AddressLimit: abuseAddressLimit, Addresses: []ReportedAddress{}, DetailsCoverage: "not_collected", Semantics: "source_reports_not_cleanliness_tenant_attribution_or_resolution"}
-	if minIP != p.Addr() || maxValue != lastValue {
+	if minIP != p.Addr() || maxIP != lastIP {
 		out.ScopeRelation = "contained"
 		out.Completeness = "partial"
 	}
-	if *d.Hosts != uint64(maxValue)-uint64(minValue)+1 {
+	if *d.Hosts != uint64(maxBytes[15])-uint64(minBytes[15])+1 {
 		out.Completeness = "partial"
 	}
 	if d.Truncated || d.HasMore || d.Next != "" || envelope.Meta.Truncated || envelope.Meta.HasMore || envelope.Meta.Next != "" || envelope.Links.Next != "" || len(d.Reported) > abuseAddressLimit {
