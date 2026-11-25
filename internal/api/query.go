@@ -261,6 +261,9 @@ func Search(v *catalog.View, q Query, now time.Time) Result {
 	}
 	facets := Facets{Providers: map[string]int{}, Countries: map[string]int{}, RIRs: map[string]int{}, Families: map[int]int{}, Models: map[string]int{}, Currencies: map[string]int{}}
 	for i, o := range v.Offers {
+		if !o.Publishable(now) {
+			continue
+		}
 		freshness := fresh[o.ProviderID]
 		if freshness == "fresh" && now.Sub(o.ObservedAt) > maxAge[o.ProviderID] {
 			freshness = "stale"
@@ -352,7 +355,7 @@ func Search(v *catalog.View, q Query, now time.Time) Result {
 			return x.ID < y.ID
 		})
 	}
-	result := Result{SchemaVersion: 1, Snapshot: v.Generation, Total: len(found), Limit: q.Limit, Offset: q.Offset, Items: []Item{}, Facets: facets}
+	result := Result{SchemaVersion: 1, Snapshot: v.PublicGeneration(now), Total: len(found), Limit: q.Limit, Offset: q.Offset, Items: []Item{}, Facets: facets}
 	end := min(len(found), q.Offset+q.Limit)
 	for i := q.Offset; i < end; i++ {
 		c := found[i]

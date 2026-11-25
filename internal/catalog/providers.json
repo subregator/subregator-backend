@@ -190,13 +190,18 @@
     "id": "peaktera",
     "name": "Peaktera",
     "url": "https://www.peaktera.com/ip-ranges",
-    "description": "Exact public ranges; price and lease-term selection",
+    "description": "Official read-only API; exact blocks and prepaid billing terms. Own ASN required; transit not included.",
     "policy": {
-      "publication": "public_source",
+      "publication": "approved",
       "prefix_visibility": "full",
       "min_refresh_seconds": 900,
       "conditions": [
-        "Public source; explicit redistribution permission requested."
+        "Data: Peaktera. Link to each offer and billing term.",
+        "Prices are per billing term; upfront totals include setup fees and refundable deposits. Checkout confirms availability and final price.",
+        "Refresh every 15 minutes; stop displaying offers after one hour without validation.",
+        "Public API: no account, legal entity, API key or fee required. Limits: 60 requests/minute and 5,000/day per IP.",
+        "ROA, IRR, LOA, rDNS and geofeed included; own ASN required; transit not included.",
+        "Historical Peaktera offers are retained privately and are not published."
       ]
     }
   },

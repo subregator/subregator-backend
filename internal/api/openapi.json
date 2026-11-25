@@ -1219,6 +1219,11 @@
               "excluded",
               "unknown"
             ]
+          },
+          "order_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Provider order link for this exact block and billing term, when supplied."
           }
         },
         "required": [

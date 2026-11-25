@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,6 +45,9 @@ func NewStore(path string, providers []Provider) (*Store, error) {
 	s := &Store{path: path, providers: providers}
 	state := State{Version: 1, Offers: []Offer{}, Sources: []Source{}}
 	for _, p := range providers {
+		if p.ID == "peaktera" && p.Policy.MinRefreshSeconds < 900 {
+			return nil, errors.New("Peaktera requires at least 15 minutes between refreshes")
+		}
 		if p.ID == "prefix-broker" && (p.Policy.PrefixVisibility != "hidden" || p.Policy.MinRefreshSeconds < 86400) {
 			return nil, errors.New("Prefix Broker requires hidden prefixes and at least daily refresh interval")
 		}
@@ -286,4 +290,18 @@ func NewPersistentStore(p Persistence, legacyPath string, providers []Provider) 
 	}
 	s.persistence = p
 	return s, nil
+}
+
+func (v *View) PublicGeneration(now time.Time) string {
+	var hidden strings.Builder
+	for _, o := range v.Offers {
+		if !o.Publishable(now) {
+			hidden.WriteString(o.ID)
+			hidden.WriteByte(0)
+		}
+	}
+	if hidden.Len() == 0 {
+		return v.Generation
+	}
+	return StableID(v.Generation, hidden.String())
 }

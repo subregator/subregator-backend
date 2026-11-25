@@ -57,6 +57,7 @@ func Run(ctx context.Context, s *catalog.Store, feedsDir string, network bool) {
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
 	client := Client()
+	peak := &peakteraFeed{}
 	refresh := func() {
 		var wg sync.WaitGroup
 		sem := make(chan struct{}, 3)
@@ -99,11 +100,7 @@ func Run(ctx context.Context, s *catalog.Store, feedsDir string, network bool) {
 					case "onie":
 						offers, e = LoadOnie(ctx, client, "https://api.onie.net/v1/public/ip-subnets", at)
 					case "peaktera":
-						var b []byte
-						b, e = fetch(ctx, client, "https://www.peaktera.com/ip-ranges")
-						if e == nil {
-							offers, e = ParsePeaktera(b, at)
-						}
+						offers, e = peak.load(ctx, client, "https://www.peaktera.com/api/v1/offers.csv", at)
 					case "obhost":
 						var b []byte
 						b, e = fetch(ctx, client, "https://www.obhost.net/ip-subnet-leasing")
