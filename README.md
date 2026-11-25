@@ -271,3 +271,7 @@ This release remains a single-writer catalogue and history service. There is no 
 ## Upgrading an existing deployment
 
 Before deploying this naming change, update the application environment variable prefix to `SUBREGATOR_` and any binary or internal catalogue paths in deployment overrides. Keep the current Compose project name and existing `postgres` and `catalog` volumes. Do not recreate or rename the database or role: explicitly set `POSTGRES_USER` and `POSTGRES_DB` to their existing values in the untracked `.env`, and retain the complete current connection URL as `SUBREGATOR_DATABASE_URL`. PostgreSQL initialization variables do not alter an initialized volume. Build and publish the renamed image before changing the deployment image reference.
+
+## License
+
+Licensed under the [MIT License](LICENSE). Third-party components retain their own licenses and copyright notices.
