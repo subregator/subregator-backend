@@ -22,12 +22,12 @@ The bounded network cache is not a durable archive of checks. Existing history c
 
 | ID | Priority | Task | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| BE-01 | P0 | Confirm source access and publication terms | — | Planned |
-| BE-02 | P0 | Measure coverage and collection capacity | — | Planned |
-| BE-03 | P0 | Define normalized check results | — | Planned |
-| BE-04 | P0 | Make scheduling source-aware | BE-01, BE-02 | Planned |
-| BE-05 | P0 | Normalize RIR, registration and abuse contacts | BE-01, BE-03, BE-04 | Planned |
-| BE-06 | P0 | Complete BGP and RPKI explanations | BE-03, BE-04 | Planned |
+| BE-01 | P0 | Confirm source access and publication terms | — | Merged in #21–#23; external verification limits remain |
+| BE-02 | P0 | Measure coverage and collection capacity | — | Merged in #21–#23; external verification limits remain |
+| BE-03 | P0 | Define normalized check results | — | Merged in #21–#23; external verification limits remain |
+| BE-04 | P0 | Make scheduling source-aware | BE-01, BE-02 | Merged in #21–#23; external verification limits remain |
+| BE-05 | P0 | Normalize RIR, registration and abuse contacts | BE-01, BE-03, BE-04 | Merged in #21–#23; external verification limits remain |
+| BE-06 | P0 | Complete BGP and RPKI explanations | BE-03, BE-04 | Implemented locally; delivery pending |
 | BE-07 | P0 | Add IRR consistency checks | BE-01, BE-03, BE-04, BE-06 | Planned |
 | BE-08 | P0 | Add subnet abuse observations | BE-01, BE-03, BE-04 | Planned |
 | BE-09 | P0 | Extend blocklist coverage beyond DROP | BE-01, BE-03, BE-04 | Planned |
@@ -87,11 +87,13 @@ Recommended first implementation slice: BE-01–BE-03, then BE-04–BE-06 and BE
 
 ### BE-06 — Complete BGP and RPKI explanations
 
-- [ ] Preserve exact-prefix, covering-route, not-announced and unavailable distinctions; include observed origins, collector visibility and observation dates when available.
-- [ ] Return per-origin RPKI findings, distinguishing invalid ASN, invalid length, not found, mixed and partial coverage. Include covering ROA, authorized ASN and maxLength where the source provides them.
-- [ ] If assessing a proposed customer ASN later, label it as a separate prefix/ASN validation; do not confuse it with the currently observed origin.
+- [x] Preserve exact-prefix, covering-route, not-announced and unavailable distinctions; include observed origins, collector visibility and observation dates when available.
+- [x] Return per-origin RPKI findings, distinguishing invalid ASN, invalid length, not found, mixed and partial coverage. Include covering ROA, authorized ASN and maxLength where the source provides them.
+- [x] If assessing a proposed customer ASN later, label it as a separate prefix/ASN validation; do not confuse it with the currently observed origin.
 - **Done when:** all-origin and origin-limit/truncation cases remain honest, including origin changes and reordered origins. Not found is not invalid; BGP observation is not a reachability guarantee; current validation is not historical validation.
 - **Next step:** expose existing distinctions before collecting extra upstream data.
+
+Implementation: additive typed BGP/RPKI explanations, source-dated RIS visibility, per-origin findings and supplied ROAs; partial successes and four-origin truncation are preserved through cached REST/MCP reads and compact reports. See [routing contract](routing.md). Local validation and delivery evidence are tracked in issue #8. Live-source compatibility and production remain unverified; delivery requires approval.
 
 ### BE-07 — Add IRR consistency checks
 

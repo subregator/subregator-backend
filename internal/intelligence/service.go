@@ -57,20 +57,22 @@ func Capabilities() []Definition {
 }
 
 type Metric struct {
-	Registration    *Registration   `json:"registration,omitempty"`
-	RetryAt         *time.Time      `json:"retry_at,omitempty"`
-	SourceUpdatedAt *time.Time      `json:"source_updated_at,omitempty"`
-	Observation     Observation     `json:"observation"`
-	Name            string          `json:"name"`
-	Status          string          `json:"status"`
-	Source          string          `json:"source"`
-	SourceURL       string          `json:"source_url,omitempty"`
-	Coverage        string          `json:"coverage"`
-	ObservedAt      *time.Time      `json:"observed_at"`
-	ExpiresAt       *time.Time      `json:"expires_at"`
-	Cached          bool            `json:"cached"`
-	Error           string          `json:"error,omitempty"`
-	Data            json.RawMessage `json:"data"`
+	BGP             *BGPExplanation  `json:"bgp,omitempty"`
+	RPKI            *RPKIExplanation `json:"rpki,omitempty"`
+	Registration    *Registration    `json:"registration,omitempty"`
+	RetryAt         *time.Time       `json:"retry_at,omitempty"`
+	SourceUpdatedAt *time.Time       `json:"source_updated_at,omitempty"`
+	Observation     Observation      `json:"observation"`
+	Name            string           `json:"name"`
+	Status          string           `json:"status"`
+	Source          string           `json:"source"`
+	SourceURL       string           `json:"source_url,omitempty"`
+	Coverage        string           `json:"coverage"`
+	ObservedAt      *time.Time       `json:"observed_at"`
+	ExpiresAt       *time.Time       `json:"expires_at"`
+	Cached          bool             `json:"cached"`
+	Error           string           `json:"error,omitempty"`
+	Data            json.RawMessage  `json:"data"`
 }
 type Report struct {
 	Resource  Target   `json:"resource"`
@@ -137,15 +139,17 @@ func (s *Service) Inspect(ctx context.Context, q Query) (Report, error) {
 	}
 	wg.Wait()
 	for _, m := range out.Metrics {
-		if m.Status != "ok" {
+		if metricPartial(m) {
 			out.Partial = true
 		}
 	}
+	attachRoutingContext(&out)
 	return out, nil
 }
 func (s *Service) metric(ctx context.Context, target Target, q Query, name string) (out Metric) {
 	defer func() {
 		out = decorateRegistration(out, target)
+		out = decorateRouting(out, target, q.ASN)
 		out.Observation = metricObservation(out, target, q, time.Now())
 	}()
 	d := definitions[name]
@@ -477,6 +481,7 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	m.ObservedAt = result.ObservedAt
 	m.SourceURL = result.SourceURL
 	m.Registration = result.Registration
+	m.RetryAt = result.RetryAt
 	if m.Name == "registration" {
 		m.Registration = normalizeWhois(m.Data, m.SourceURL, target)
 	}
@@ -535,17 +540,18 @@ func (s *Service) origins(ctx context.Context, target Target, q Query) (string, 
 		prefix = target.Value
 	}
 	asns := []uint32{}
+	seen := map[uint32]bool{}
 	if q.ASN != 0 {
 		asns = append(asns, q.ASN)
 	} else {
 		for _, raw := range data.ASNs {
 			if n := originASN(raw); n != 0 {
-				asns = append(asns, n)
+				if !seen[n] {
+					asns = append(asns, n)
+					seen[n] = true
+				}
 			}
 		}
-	}
-	if len(asns) > 4 {
-		asns = asns[:4]
 	}
 	if prefix == "" || len(asns) == 0 {
 		return "", nil, ErrNoData
@@ -553,20 +559,62 @@ func (s *Service) origins(ctx context.Context, target Target, q Query) (string, 
 	return prefix, asns, nil
 }
 func (s *Service) rpki(ctx context.Context, target Target, q Query) (Metric, error) {
+	var overview Metric
+	if target.Kind == "prefix" && q.ASN == 0 {
+		if q.overview != nil {
+			overview = *q.overview
+		} else {
+			overview = s.metric(ctx, target, Query{Resource: target.Value}, "prefix_overview")
+			q.overview = &overview
+		}
+	}
 	prefix, asns, e := s.origins(ctx, target, q)
 	if e != nil {
 		return Metric{}, e
 	}
-	results := []any{}
-	for _, asn := range asns {
-		m, e := s.ripe(ctx, "rpki-validation", url.Values{"resource": {strings.TrimPrefix(asnTarget(asn), "AS")}, "prefix": {prefix}})
-		if e != nil {
-			return Metric{}, e
+	if target.Kind == "prefix" && q.ASN == 0 {
+		b := bgpExplanation(overview, target)
+		if b == nil || b.Relation != "exact" {
+			return Metric{}, errors.New("exact origin observation required")
 		}
-		results = append(results, map[string]any{"asn": asn, "source_url": m.SourceURL, "data": m.Data})
 	}
-	b, _ := json.Marshal(map[string]any{"prefix": prefix, "origins": results, "origin_limit": 4})
-	return Metric{Data: b, ObservedAt: observedNow(), SourceURL: "https://stat.ripe.net/docs/data-api/api-endpoints/rpki-validation"}, nil
+	results := []any{}
+	successes := 0
+	var lastError error
+	var retry *time.Time
+	for _, asn := range asns[:min(4, len(asns))] {
+		m, err := s.ripe(ctx, "rpki-validation", url.Values{"resource": {strings.TrimPrefix(asnTarget(asn), "AS")}, "prefix": {prefix}})
+		if err != nil {
+			lastError = err
+			var limited *sourceLimited
+			if errors.As(err, &limited) {
+				retry = &limited.Until
+			}
+			results = append(results, map[string]any{"asn": asn, "data": nil})
+		} else {
+			successes++
+			results = append(results, map[string]any{"asn": asn, "source_url": m.SourceURL, "observed_at": m.ObservedAt, "data": m.Data})
+		}
+	}
+	if successes == 0 {
+		return Metric{}, lastError
+	}
+	basis := "observed_origins"
+	originCompleteness := "complete"
+	truncated := len(asns) > 4
+	if q.ASN != 0 {
+		basis = "proposed_asn"
+	} else if target.Kind == "prefix" {
+		bgp := bgpExplanation(overview, target)
+		if bgp == nil {
+			originCompleteness = "unknown"
+		} else {
+			originCompleteness = bgp.Completeness
+		}
+	}
+
+	b, _ := json.Marshal(map[string]any{"prefix": prefix, "origins": results, "origin_limit": 4, "basis": basis, "truncated": truncated, "origin_completeness": originCompleteness, "origin_observed_at": overview.ObservedAt, "origin_expires_at": overview.ExpiresAt})
+	return Metric{Data: b, ObservedAt: observedNow(), RetryAt: retry, SourceURL: "https://stat.ripe.net/docs/data-api/api-endpoints/rpki-validation"}, nil
 }
 func (s *Service) neighbours(ctx context.Context, target Target, q Query) (Metric, error) {
 	_, asns, e := s.origins(ctx, target, q)
@@ -574,7 +622,7 @@ func (s *Service) neighbours(ctx context.Context, target Target, q Query) (Metri
 		return Metric{}, e
 	}
 	results := []any{}
-	for _, asn := range asns {
+	for _, asn := range asns[:min(4, len(asns))] {
 		m, e := s.ripe(ctx, "asn-neighbours", url.Values{"resource": {asnTarget(asn)}})
 		if e != nil {
 			return Metric{}, e

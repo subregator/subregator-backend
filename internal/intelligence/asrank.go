@@ -17,7 +17,7 @@ func (s *Service) asRank(ctx context.Context, target Target, q Query) (Metric, e
 		asns = origins
 	}
 	results := []any{}
-	for _, asn := range asns {
+	for _, asn := range asns[:min(4, len(asns))] {
 		u := "https://api.asrank.caida.org/v2/restful/asns/" + strings.TrimPrefix(asnTarget(asn), "AS")
 		b, e := s.request(ctx, u, "")
 		if e != nil {

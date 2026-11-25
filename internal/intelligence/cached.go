@@ -34,12 +34,19 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 			m.Status = "disabled"
 		}
 		m = decorateRegistration(m, target)
+		m = decorateRouting(m, target, q.ASN)
+		if m.RPKI != nil && m.RPKI.Basis == "observed_origins" && target.Kind == "prefix" {
+			dependency, _ := s.Cached(ctx, Query{Resource: target.Value, Checks: []string{"prefix_overview"}})
+			overview := dependency.Metrics[0]
+			reconcileRPKI(&m, overview)
+		}
 		m.Observation = metricObservation(m, target, q, time.Now())
 		report.Metrics = append(report.Metrics, m)
-		if m.Status != "ok" {
+		if metricPartial(m) {
 			report.Partial = true
 		}
 	}
+	attachRoutingContext(&report)
 	return report, nil
 }
 func metricKey(target Target, q Query, name string) string {
