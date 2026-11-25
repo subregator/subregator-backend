@@ -85,6 +85,7 @@ func (f *dropFeed) check(ctx context.Context, s *Service, prefix netip.Prefix, n
 		if s.cache != nil {
 			b, _, found, e := s.cache.CacheGet(ctx, key)
 			if e != nil {
+				s.persistenceFailed()
 				c.Reason = "Stored DROP schedule unavailable; refresh deferred"
 				return c
 			}
@@ -109,7 +110,11 @@ func (f *dropFeed) check(ctx context.Context, s *Service, prefix netip.Prefix, n
 		if err != nil {
 			return err
 		}
-		return s.cache.CachePut(ctx, key, b, f.Next)
+		err = s.cache.CachePut(ctx, key, b, f.Next)
+		if err != nil {
+			s.persistenceFailed()
+		}
+		return err
 	}
 	if f.pendingSave && !now.Before(f.retrySave) {
 		f.pendingSave = persist() != nil

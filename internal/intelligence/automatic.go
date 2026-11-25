@@ -14,6 +14,7 @@ import (
 )
 
 type Check struct {
+	Observation     Observation `json:"observation"`
 	Status          string      `json:"status"`
 	Freshness       string      `json:"freshness"`
 	ObservedAt      *time.Time  `json:"observed_at"`
@@ -36,6 +37,8 @@ type OfferChecks struct {
 	Semantics string `json:"semantics"`
 }
 
+var automaticChecks = []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap"}
+
 // Automatic is written only by Run; readers never schedule upstream work.
 type Automatic struct {
 	service *Service
@@ -43,10 +46,11 @@ type Automatic struct {
 	reports map[string]OfferChecks
 	due     map[string]time.Time
 	drop    map[bool]*dropFeed
+	metrics map[string][]Metric
 }
 
 func NewAutomatic(s *Service) *Automatic {
-	return &Automatic{service: s, reports: map[string]OfferChecks{}, due: map[string]time.Time{}, drop: map[bool]*dropFeed{true: {}, false: {}}}
+	return &Automatic{service: s, reports: map[string]OfferChecks{}, due: map[string]time.Time{}, drop: map[bool]*dropFeed{true: {}, false: {}}, metrics: map[string][]Metric{}}
 }
 
 func unknownCheck() Check {
@@ -60,7 +64,7 @@ func (a *Automatic) Get(resource string) OfferChecks {
 	r, ok := a.reports[resource]
 	a.mu.RUnlock()
 	if !ok {
-		return pendingChecks(resource)
+		r = pendingChecks(resource)
 	}
 	now := time.Now()
 	for _, c := range []*Check{&r.BGP, &r.RPKI, &r.Blocklist} {
@@ -68,6 +72,9 @@ func (a *Automatic) Get(resource string) OfferChecks {
 			c.Freshness = "stale"
 		}
 	}
+	r.BGP.Observation = checkObservation(r.BGP, resource, "prefix_overview", now)
+	r.RPKI.Observation = checkObservation(r.RPKI, resource, "rpki", now)
+	r.Blocklist.Observation = checkObservation(r.Blocklist, resource, "spamhaus_drop", now)
 	return r
 }
 
@@ -78,15 +85,7 @@ func (a *Automatic) Run(ctx context.Context, store *catalog.Store) {
 	defer ticker.Stop()
 	cursor := ""
 	for {
-		view := store.View()
-		active := map[string]bool{}
-		for _, o := range view.Offers {
-			if o.Resource.Prefix != nil {
-				if t, e := ParseTarget(*o.Resource.Prefix); e == nil {
-					active[t.Value] = true
-				}
-			}
-		}
+		active := publishedPrefixes(store)
 		keys := make([]string, 0, len(active))
 		for key := range active {
 			keys = append(keys, key)
@@ -97,6 +96,7 @@ func (a *Automatic) Run(ctx context.Context, store *catalog.Store) {
 			if !active[key] {
 				delete(a.reports, key)
 				delete(a.due, key)
+				delete(a.metrics, key)
 			}
 		}
 		a.mu.Unlock()
@@ -113,7 +113,9 @@ func (a *Automatic) Run(ctx context.Context, store *catalog.Store) {
 					a.mu.Unlock()
 				}
 			}
-			a.due[key] = time.Time{}
+			a.mu.Lock()
+			a.due[key] = time.Now()
+			a.mu.Unlock()
 		}
 		start := sort.SearchStrings(keys, cursor)
 		for i := 0; i < len(keys); i++ {
@@ -130,7 +132,7 @@ func (a *Automatic) Run(ctx context.Context, store *catalog.Store) {
 			q := Query{Resource: key}
 			workCtx := context.WithValue(ctx, automaticBudgetKey{}, true)
 			a.publish(ctx, key, r, blocklist)
-			for _, name := range []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap"} {
+			for _, name := range automaticChecks {
 				m := a.service.metric(workCtx, r.Resource, q, name)
 				if ctx.Err() != nil {
 					return
@@ -210,15 +212,21 @@ func (a *Automatic) publish(ctx context.Context, key string, r Report, blocklist
 			due = *m.ExpiresAt
 		}
 	}
-	a.due[key] = due
 	if a.service.cache != nil {
 		b, _ := json.Marshal(report)
 		if e := a.service.cache.CachePut(ctx, "automatic:"+key, b, due); e != nil {
-			a.due[key] = time.Now().Add(time.Minute)
+			due = time.Now().Add(time.Minute)
+			a.service.persistenceFailed()
 			slog.Warn("could not persist automatic checks", "resource", key)
 		}
 	}
 	a.mu.Lock()
+	a.due[key] = due
+	samples := make([]Metric, len(r.Metrics))
+	for i, m := range r.Metrics {
+		samples[i] = Metric{Name: m.Name, Status: m.Status, ObservedAt: m.ObservedAt, ExpiresAt: m.ExpiresAt}
+	}
+	a.metrics[key] = samples
 	a.reports[key] = report
 	a.mu.Unlock()
 }

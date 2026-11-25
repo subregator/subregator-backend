@@ -52,6 +52,10 @@ func Handler(store *catalog.Store, origin string, extras ...Services) http.Handl
 	mux.HandleFunc("GET /api/v1/network/checks", func(w http.ResponseWriter, r *http.Request) {
 		respond(w, r, map[string]any{"items": intelligence.Capabilities()}, nil)
 	})
+	mux.HandleFunc("GET /api/v1/network/status", func(w http.ResponseWriter, r *http.Request) {
+		result, err := service.collectionStatus()
+		respond(w, r, result, err)
+	})
 	mux.HandleFunc("GET /api/v1/network", func(w http.ResponseWriter, r *http.Request) {
 		q, e := parseInspection(r.URL.Query())
 		if e != nil {

@@ -329,6 +329,13 @@ func parseInspection(v url.Values) (intelligence.Query, error) {
 }
 func schema() any { var out any; json.Unmarshal(openAPI, &out); return out }
 
+func (s *service) collectionStatus() (intelligence.CollectionStatus, error) {
+	if s.extras.Automatic == nil {
+		return intelligence.CollectionStatus{}, &apiError{503, "checks_disabled", "Automatic collection is not configured"}
+	}
+	return s.extras.Automatic.Status(s.store), nil
+}
+
 func (s *service) attachChecks(item *Item) {
 	if s.extras.Automatic != nil && item.Resource.Prefix != nil {
 		r := s.extras.Automatic.Get(*item.Resource.Prefix)

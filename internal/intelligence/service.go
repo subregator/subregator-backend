@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ type Cache interface {
 	CachePut(context.Context, string, json.RawMessage, time.Time) error
 }
 type Definition struct {
+	Automatic     bool     `json:"automatic"`
 	Name          string   `json:"name"`
 	Source        string   `json:"source"`
 	Description   string   `json:"description"`
@@ -47,6 +49,7 @@ var definitions = map[string]Definition{
 func Capabilities() []Definition {
 	out := make([]Definition, 0, len(definitions))
 	for _, d := range definitions {
+		d.Automatic = slices.Contains(automaticChecks, d.Name)
 		out = append(out, d)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -54,16 +57,18 @@ func Capabilities() []Definition {
 }
 
 type Metric struct {
-	Name       string          `json:"name"`
-	Status     string          `json:"status"`
-	Source     string          `json:"source"`
-	SourceURL  string          `json:"source_url,omitempty"`
-	Coverage   string          `json:"coverage"`
-	ObservedAt *time.Time      `json:"observed_at"`
-	ExpiresAt  *time.Time      `json:"expires_at"`
-	Cached     bool            `json:"cached"`
-	Error      string          `json:"error,omitempty"`
-	Data       json.RawMessage `json:"data"`
+	SourceUpdatedAt *time.Time      `json:"source_updated_at,omitempty"`
+	Observation     Observation     `json:"observation"`
+	Name            string          `json:"name"`
+	Status          string          `json:"status"`
+	Source          string          `json:"source"`
+	SourceURL       string          `json:"source_url,omitempty"`
+	Coverage        string          `json:"coverage"`
+	ObservedAt      *time.Time      `json:"observed_at"`
+	ExpiresAt       *time.Time      `json:"expires_at"`
+	Cached          bool            `json:"cached"`
+	Error           string          `json:"error,omitempty"`
+	Data            json.RawMessage `json:"data"`
 }
 type Report struct {
 	Resource  Target   `json:"resource"`
@@ -76,17 +81,23 @@ type call struct {
 	result Metric
 }
 type Service struct {
-	cache        Cache
-	client       *http.Client
-	network      bool
-	token        string
-	rpm          int
-	mu           sync.Mutex
-	flights      map[string]*call
-	window       time.Time
-	used         int
-	httpSlots    chan struct{}
-	inspectSlots chan struct{}
+	cache               Cache
+	client              *http.Client
+	network             bool
+	token               string
+	rpm                 int
+	mu                  sync.Mutex
+	flights             map[string]*call
+	window              time.Time
+	used                int
+	httpSlots           chan struct{}
+	inspectSlots        chan struct{}
+	stats               map[string]UpstreamStats
+	startedAt           time.Time
+	budgetDenials       uint64
+	budgetWaits         uint64
+	budgetWaitDuration  time.Duration
+	persistenceFailures uint64
 }
 
 var ErrNoData = errors.New("no observation in source coverage")
@@ -97,7 +108,7 @@ func New(cache Cache, network bool, freeToken string, rpm int) *Service {
 		rpm = 120
 	}
 	client := &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("upstream redirect refused") }}
-	return &Service{cache: cache, client: client, network: network, token: freeToken, rpm: rpm, flights: map[string]*call{}, httpSlots: make(chan struct{}, 4), inspectSlots: make(chan struct{}, 4)}
+	return &Service{cache: cache, client: client, network: network, token: freeToken, rpm: rpm, flights: map[string]*call{}, httpSlots: make(chan struct{}, 4), inspectSlots: make(chan struct{}, 4), stats: map[string]UpstreamStats{}, startedAt: time.Now().UTC()}
 }
 func (s *Service) Inspect(ctx context.Context, q Query) (Report, error) {
 	target, e := q.validate()
@@ -126,29 +137,22 @@ func (s *Service) Inspect(ctx context.Context, q Query) (Report, error) {
 	}
 	return out, nil
 }
-func (s *Service) metric(ctx context.Context, target Target, q Query, name string) Metric {
+func (s *Service) metric(ctx context.Context, target Target, q Query, name string) (out Metric) {
+	defer func() { out.Observation = metricObservation(out, target, q, time.Now()) }()
 	d := definitions[name]
-	m := Metric{Name: name, Source: d.Source, Coverage: d.Coverage, Data: json.RawMessage("null")}
-	applicable := false
-	for _, k := range d.Kinds {
-		if target.Kind == k {
-			applicable = true
-		}
-	}
-	if !applicable {
-		m.Status = "not_applicable"
-		return m
-	}
-	if name == "ipinfo_lite" && s.token == "" {
-		m.Status = "not_configured"
-		m.Error = "Optional IPinfo Lite free token is not configured"
+	m := s.initialMetric(target, name)
+	if m.Status != "pending" {
 		return m
 	}
 	key := metricKey(target, q, name)
 	var previous Metric
 	cached := func() bool {
 		if s.cache != nil {
-			if b, expires, found, e := s.cache.CacheGet(ctx, key); e == nil && found && json.Unmarshal(b, &previous) == nil && time.Now().Before(expires) {
+			b, expires, found, e := s.cache.CacheGet(ctx, key)
+			if e != nil {
+				s.persistenceFailed()
+			}
+			if e == nil && found && json.Unmarshal(b, &previous) == nil && time.Now().Before(expires) {
 				previous.Cached = true
 				return true
 			}
@@ -206,7 +210,9 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 		result.ExpiresAt = &expires
 		if s.cache != nil && ctx.Err() == nil {
 			if b, e := json.Marshal(result); e == nil {
-				s.cache.CachePut(ctx, key, b, expires)
+				if s.cache.CachePut(ctx, key, b, expires) != nil {
+					s.persistenceFailed()
+				}
 			}
 		}
 	}
@@ -243,14 +249,20 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		s.mu.Unlock()
 		<-s.httpSlots
 		if ctx.Value(automaticBudgetKey{}) != true {
+			s.mu.Lock()
+			s.budgetDenials++
+			s.mu.Unlock()
 			return nil, ErrBusy
 		}
+		started := time.Now()
 		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+			s.recordBudgetWait(time.Since(started))
 			return nil, ctx.Err()
 		case <-timer.C:
+			s.recordBudgetWait(time.Since(started))
 		}
 	}
 }
@@ -264,7 +276,10 @@ func (s *Service) request(ctx context.Context, rawURL, auth string) (json.RawMes
 	return s.readSource(ctx, rawURL, auth, 1<<20, true)
 }
 
-func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes int, requireJSON bool) (json.RawMessage, error) {
+func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes int, requireJSON bool) (data json.RawMessage, err error) {
+	started := time.Now()
+	status := 0
+	defer func() { s.recordRequest(rawURL, status, err, time.Since(started)) }()
 	r, e := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if e != nil {
 		return nil, errors.New("invalid upstream request")
@@ -279,6 +294,7 @@ func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes 
 		return nil, errors.New("upstream request failed")
 	}
 	defer response.Body.Close()
+	status = response.StatusCode
 	if response.StatusCode == 404 {
 		return nil, ErrNoData
 	}
