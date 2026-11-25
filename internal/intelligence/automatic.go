@@ -11,19 +11,21 @@ import (
 )
 
 type Check struct {
-	Observation     Observation `json:"observation"`
-	Status          string      `json:"status"`
-	Freshness       string      `json:"freshness"`
-	ObservedAt      *time.Time  `json:"observed_at"`
-	ExpiresAt       *time.Time  `json:"expires_at"`
-	Source          string      `json:"source"`
-	SourceURL       string      `json:"source_url,omitempty"`
-	Coverage        string      `json:"coverage"`
-	Reason          string      `json:"reason"`
-	Origins         []uint32    `json:"origins,omitempty"`
-	Matches         []DropMatch `json:"matches,omitempty"`
-	SourceUpdatedAt *time.Time  `json:"source_updated_at,omitempty"`
-	Copyright       string      `json:"copyright,omitempty"`
+	BGP             *BGPExplanation  `json:"bgp,omitempty"`
+	RPKI            *RPKIExplanation `json:"rpki,omitempty"`
+	Observation     Observation      `json:"observation"`
+	Status          string           `json:"status"`
+	Freshness       string           `json:"freshness"`
+	ObservedAt      *time.Time       `json:"observed_at"`
+	ExpiresAt       *time.Time       `json:"expires_at"`
+	Source          string           `json:"source"`
+	SourceURL       string           `json:"source_url,omitempty"`
+	Coverage        string           `json:"coverage"`
+	Reason          string           `json:"reason"`
+	Origins         []uint32         `json:"origins,omitempty"`
+	Matches         []DropMatch      `json:"matches,omitempty"`
+	SourceUpdatedAt *time.Time       `json:"source_updated_at,omitempty"`
+	Copyright       string           `json:"copyright,omitempty"`
 }
 
 type OfferChecks struct {
@@ -183,7 +185,14 @@ func summarize(r Report, now time.Time) (Check, Check) {
 			validation = m
 		}
 	}
+	overview = decorateRouting(overview, r.Resource, 0)
+	validation = decorateRouting(validation, r.Resource, 0)
+	if validation.RPKI != nil && validation.RPKI.Basis == "observed_origins" {
+		reconcileRPKI(&validation, overview)
+	}
 	bgp, rpki := metricCheck(overview, now), metricCheck(validation, now)
+	bgp.BGP = overview.BGP
+	rpki.RPKI = validation.RPKI
 	if overview.Status == "no_data" && overview.ObservedAt != nil {
 		bgp.Status = "no_data"
 		rpki.Status = "not_applicable"
@@ -192,97 +201,47 @@ func summarize(r Report, now time.Time) (Check, Check) {
 	if validation.Status == "no_data" && validation.ObservedAt != nil {
 		rpki.Status = "no_data"
 	}
-	p, e := netip.ParsePrefix(r.Resource.Value)
-	if e != nil {
+	b := bgp.BGP
+	if b == nil {
 		return bgp, rpki
 	}
-	var d struct {
-		Resource  string `json:"resource"`
-		Less      *bool  `json:"is_less_specific"`
-		Announced *bool  `json:"announced"`
-		Filtered  *int   `json:"num_filtered_out"`
-		ASNs      []struct {
-			ASN uint32 `json:"asn"`
-		} `json:"asns"`
-	}
-	if json.Unmarshal(overview.Data, &d) != nil {
-		return bgp, rpki
-	}
-	if !samePrefix(d.Resource, p) || d.Less == nil || *d.Less {
-		if d.Less != nil && *d.Less {
-			bgp.Status = "covering_route"
+	bgp.Origins = slices.Clone(b.Origins)
+	for _, m := range r.Metrics {
+		if m.Name == "routing_status" {
+			b.Routing = routingVisibility(m, r.Resource, now)
 		}
-		bgp.Reason = "An exact-prefix observation is required"
+	}
+	if b.Relation == "covering" {
+		bgp.Status = "covering_route"
+		bgp.Reason = "Only a covering route was observed; not an exact-prefix announcement"
 		return bgp, rpki
 	}
-	origins := map[uint32]bool{}
-	for _, v := range d.ASNs {
-		if v.ASN == 0 {
-			return bgp, rpki
+	if b.Relation != "exact" {
+		return bgp, rpki
+	}
+	var d prefixOverview
+	if json.Unmarshal(overview.Data, &d) != nil || d.Announced == nil {
+		return bgp, rpki
+	}
+	if !*d.Announced {
+		if len(b.Origins) == 0 && b.Completeness == "complete" {
+			bgp.Status = "not_announced"
+			rpki.Status = "not_applicable"
 		}
-		origins[v.ASN] = true
-		bgp.Origins = append(bgp.Origins, v.ASN)
-	}
-	if d.Announced != nil && !*d.Announced && d.ASNs != nil && len(origins) == 0 {
-		bgp.Status = "not_announced"
-		rpki.Status = "not_applicable"
 		return bgp, rpki
 	}
-	if d.Announced == nil || !*d.Announced || len(origins) == 0 {
+	if len(b.Origins) == 0 {
 		return bgp, rpki
 	}
 	bgp.Status = "announced"
 	bgp.Reason = "Exact prefix observed by RIS; not a reachability guarantee"
-	var v struct {
-		Prefix  string `json:"prefix"`
-		Origins []struct {
-			ASN  uint32 `json:"asn"`
-			Data struct {
-				Prefix   string          `json:"prefix"`
-				Resource json.RawMessage `json:"resource"`
-				Status   string          `json:"status"`
-			} `json:"data"`
-		} `json:"origins"`
-	}
-	if json.Unmarshal(validation.Data, &v) != nil || !samePrefix(v.Prefix, p) {
+	if rpki.RPKI == nil || rpki.RPKI.Prefix != r.Resource.Value || rpki.RPKI.Basis != "observed_origins" {
 		return bgp, rpki
-	}
-	if bgp.ExpiresAt != nil && rpki.ExpiresAt != nil && bgp.ExpiresAt.Before(*rpki.ExpiresAt) {
-		rpki.ExpiresAt = bgp.ExpiresAt
 	}
 	if bgp.Freshness != "fresh" {
 		rpki.Freshness = bgp.Freshness
 	}
-	checked := map[uint32]bool{}
-	invalid, valid, unknown := false, 0, 0
-	for _, o := range v.Origins {
-		if !origins[o.ASN] || checked[o.ASN] || !samePrefix(o.Data.Prefix, p) || originASN(o.Data.Resource) != o.ASN {
-			continue
-		}
-		switch o.Data.Status {
-		case "valid":
-			valid++
-		case "unknown":
-			unknown++
-		case "invalid_asn", "invalid_length":
-			invalid = true
-		default:
-			continue
-		}
-		checked[o.ASN] = true
-	}
-	rpki.Reason = "Validation of observed prefix/origin pairs; not ownership or reputation"
-	switch {
-	case invalid:
-		rpki.Status = "invalid"
-	case len(checked) != len(origins) || len(v.Origins) != len(origins) || d.Filtered == nil || *d.Filtered != 0:
-		rpki.Status = "partial"
-	case valid == len(origins):
-		rpki.Status = "valid"
-	case unknown == len(origins):
-		rpki.Status = "not_found"
-	default:
-		rpki.Status = "mixed"
-	}
+	rpki.Status = rpki.RPKI.Status
+	rpki.Reason = "Current validation of observed prefix/origin pairs; not historical validation, ownership or reputation"
 	return bgp, rpki
 }

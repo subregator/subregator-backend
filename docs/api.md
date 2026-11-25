@@ -70,6 +70,8 @@ Collection throughput is bounded by source quotas, independently of fast catalog
 
 ## Cached network observations
 
+BGP scope, separately dated RIS visibility and per-origin RPKI results are documented in the [routing explanation contract](routing.md). Exact and covering routes remain distinct; filtered, truncated or failed origins remain partial. Proposed ASN validation is separate from observed origins.
+
 Current `rdap` and `registration` metrics include typed registry records, RIR, range relationships, public entities, dates and unverified abuse contacts. See the [registration contract](registration.md) for fallback collection, partial coverage and source limits.
 
 Every metric and embedded offer check includes an additive `observation` envelope that separates collection status, freshness, completeness and typed scope from the existing finding. See the [observation contract](check-results.md) for states, examples and compatibility. `/api/v1/network/checks` reports which metric definitions are collected automatically; other definitions do not imply scheduled collection.

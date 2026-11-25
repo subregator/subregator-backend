@@ -56,6 +56,22 @@ func metricObservation(m Metric, target Target, q Query, now time.Time) Observat
 	if m.Status != "ok" && m.Status != "stale" || m.ObservedAt == nil {
 		return o
 	}
+	if m.BGP != nil {
+		o.Completeness = m.BGP.Completeness
+		o.Scope.Resource = m.BGP.Prefix
+		o.Scope.Relation = m.BGP.Relation
+		return o
+	}
+	if m.RPKI != nil {
+		o.Completeness = m.RPKI.Completeness
+		o.Scope.Resource = m.RPKI.Prefix
+		if m.RPKI.Basis == "proposed_asn" {
+			o.Scope.Relation = "prefix_asn"
+		} else {
+			o.Scope.Relation = "origin_asns"
+		}
+		return o
+	}
 	if m.Registration != nil {
 		o.Completeness = m.Registration.Completeness
 		if len(m.Registration.Records) == 1 {
@@ -122,6 +138,18 @@ func checkObservation(c Check, resource, name string, now time.Time) Observation
 		o.FailureReason = c.Reason
 	}
 	if c.ObservedAt == nil {
+		return o
+	}
+	if c.BGP != nil {
+		o.Completeness = c.BGP.Completeness
+		o.Scope.Resource = c.BGP.Prefix
+		o.Scope.Relation = c.BGP.Relation
+		return o
+	}
+	if c.RPKI != nil {
+		o.Completeness = c.RPKI.Completeness
+		o.Scope.Resource = c.RPKI.Prefix
+		o.Scope.Relation = "exact"
 		return o
 	}
 	switch {

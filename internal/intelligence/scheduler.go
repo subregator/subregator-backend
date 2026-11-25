@@ -223,7 +223,7 @@ func (a *Automatic) restoreSchedule(ctx context.Context, key string, names []str
 		if !a.service.network {
 			a.jobs[key][m.Name] = scheduledCheck{}
 		}
-		if m.Name == "prefix_overview" || m.Name == "rpki" {
+		if m.Name == "prefix_overview" || m.Name == "rpki" || m.Name == "routing_status" {
 			a.evidence[key][m.Name] = compactEvidence(m)
 		}
 	}
@@ -247,7 +247,7 @@ func (a *Automatic) completeCheck(ctx context.Context, result checkResult) {
 		jobs[result.Name] = scheduledCheck{Next: result.Next}
 	} else {
 		jobs[result.Name] = nextCheck(result.Metric, jobs[result.Name], time.Now())
-		if result.Name == "prefix_overview" || result.Name == "rpki" {
+		if result.Name == "prefix_overview" || result.Name == "rpki" || result.Name == "routing_status" {
 			a.evidence[result.Key][result.Name] = compactEvidence(result.Metric)
 		}
 	}
@@ -292,15 +292,23 @@ func (a *Automatic) syncDue(key string) {
 }
 
 func compactEvidence(m Metric) Metric {
+	m.BGP = nil
+	m.RPKI = nil
 	if m.Name == "prefix_overview" {
-		var data struct {
-			Resource  string            `json:"resource"`
-			Less      *bool             `json:"is_less_specific"`
-			Announced *bool             `json:"announced"`
-			Filtered  *int              `json:"num_filtered_out"`
-			ASNs      []json.RawMessage `json:"asns"`
-		}
+		var data prefixOverview
 		if json.Unmarshal(m.Data, &data) == nil {
+			unique := []json.RawMessage{}
+			seen := map[uint32]bool{}
+			for _, raw := range data.ASNs {
+				asn := originASN(raw)
+				if !seen[asn] {
+					unique = append(unique, raw)
+					seen[asn] = true
+				}
+			}
+			if data.ASNs != nil {
+				data.ASNs = unique
+			}
 			if len(data.ASNs) > 4 {
 				n := len(data.ASNs) - 4
 				if data.Filtered != nil {
@@ -317,30 +325,42 @@ func compactEvidence(m Metric) Metric {
 				return m
 			}
 		}
-	} else {
-		var data struct {
-			Prefix  string `json:"prefix"`
-			Origins []struct {
-				ASN  uint32 `json:"asn"`
-				Data struct {
-					Prefix   string          `json:"prefix"`
-					Resource json.RawMessage `json:"resource"`
-					Status   string          `json:"status"`
-				} `json:"data"`
-			} `json:"origins"`
-		}
-		if json.Unmarshal(m.Data, &data) == nil && len(data.Prefix) <= 100 && len(data.Origins) <= 4 {
-			valid := true
-			for i := range data.Origins {
-				o := &data.Origins[i]
-				if len(o.Data.Prefix) > 100 || len(o.Data.Status) > 32 {
-					valid = false
-					break
+	} else if m.Name == "rpki" {
+		if detail := rpkiExplanation(m); detail != nil {
+			origins := []any{}
+			for _, o := range detail.Origins {
+				state := o.Status
+				if state == "not_found" {
+					state = "unknown"
 				}
-				o.Data.Resource, _ = json.Marshal(originASN(o.Data.Resource))
+				origins = append(origins, map[string]any{"asn": o.ASN, "source_url": o.SourceURL, "observed_at": o.ObservedAt, "data": map[string]any{"prefix": detail.Prefix, "resource": o.ASN, "status": state, "validating_roas": o.CoveringROAs, "roas_truncated": o.ROAsTruncated}})
 			}
-			if valid {
-				m.Data, _ = json.Marshal(data)
+			m.Data, _ = json.Marshal(map[string]any{"prefix": detail.Prefix, "basis": detail.Basis, "truncated": detail.Truncated, "origin_completeness": detail.Completeness, "origin_limit": 4, "origins": origins, "origin_observed_at": detail.OriginObservedAt, "origin_expires_at": detail.OriginExpiresAt})
+			m.RPKI = nil
+			return m
+		}
+	} else if m.Name == "routing_status" {
+		var data struct {
+			Resource   string `json:"resource"`
+			QueryTime  string `json:"query_time"`
+			Visibility map[string]struct {
+				Seeing *int `json:"ris_peers_seeing"`
+				Total  *int `json:"total_ris_peers"`
+			} `json:"visibility"`
+			First struct {
+				Time   string          `json:"time"`
+				Prefix string          `json:"prefix"`
+				Origin json.RawMessage `json:"origin"`
+			} `json:"first_seen"`
+			Last struct {
+				Time   string          `json:"time"`
+				Prefix string          `json:"prefix"`
+				Origin json.RawMessage `json:"origin"`
+			} `json:"last_seen"`
+		}
+		if json.Unmarshal(m.Data, &data) == nil {
+			m.Data, _ = json.Marshal(data)
+			if len(m.Data) <= 4096 {
 				return m
 			}
 		}

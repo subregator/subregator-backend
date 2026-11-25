@@ -841,7 +841,7 @@
     "/api/v1/network": {
       "get": {
         "summary": "Inspect a public IP, subnet or ASN using free public sources",
-        "description": "Read stored observations only. This endpoint never runs or refreshes external checks. Checks without a cached observation remain pending; automatic checks cover published catalogue prefixes. Historical parameter combinations and standalone IP/ASN queries may have no stored observation.",
+        "description": "Read stored observations only. This endpoint never runs or refreshes external checks. Checks without a cached observation remain pending; automatic checks cover published catalogue prefixes. Historical parameter combinations and standalone IP/ASN queries may have no stored observation. BGP and RPKI include normalized explanations. RPKI findings distinguish observed origins from a proposed ASN, individual invalid ASN/length and partial coverage. No unknown, stale or partial finding establishes a passing result.",
         "parameters": [
           {
             "name": "resource",
@@ -2153,6 +2153,12 @@
           },
           "registration": {
             "$ref": "#/components/schemas/Registration"
+          },
+          "bgp": {
+            "$ref": "#/components/schemas/BGPExplanation"
+          },
+          "rpki": {
+            "$ref": "#/components/schemas/RPKIExplanation"
           }
         },
         "required": [
@@ -2323,6 +2329,12 @@
           },
           "observation": {
             "$ref": "#/components/schemas/Observation"
+          },
+          "bgp": {
+            "$ref": "#/components/schemas/BGPExplanation"
+          },
+          "rpki": {
+            "$ref": "#/components/schemas/RPKIExplanation"
           }
         },
         "required": [
@@ -2389,7 +2401,8 @@
               "covering",
               "overlap",
               "origin_asns",
-              "contained"
+              "contained",
+              "prefix_asn"
             ]
           },
           "asn": {
@@ -2936,6 +2949,262 @@
         ],
         "additionalProperties": false,
         "description": "Normalized current registry evidence; record range and source distinguish exact, covering and partial query coverage. Network name, registered entity, seller and origin ASN are separate concepts. Contacts are published but not verified; source dates do not prove ownership or selling authority."
+      },
+      "BGPExplanation": {
+        "type": "object",
+        "properties": {
+          "prefix": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "covering",
+              "unknown"
+            ]
+          },
+          "origins": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "unknown"
+            ]
+          },
+          "filtered_prefixes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "query_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/RoutingVisibility"
+          }
+        },
+        "required": [
+          "relation",
+          "origins",
+          "completeness"
+        ],
+        "additionalProperties": false,
+        "description": "RIS prefix observation. A covering relation without prefix means the source did not identify the actual covering route. Filtering and collector coverage are not global reachability."
+      },
+      "RouteSeen": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "time",
+          "prefix",
+          "origin"
+        ],
+        "additionalProperties": false
+      },
+      "RoutingVisibility": {
+        "type": "object",
+        "properties": {
+          "observation": {
+            "$ref": "#/components/schemas/Observation"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "query_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "peers_seeing": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_peers": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "first_seen": {
+            "$ref": "#/components/schemas/RouteSeen"
+          },
+          "last_seen": {
+            "$ref": "#/components/schemas/RouteSeen"
+          }
+        },
+        "required": [
+          "observation",
+          "observed_at",
+          "expires_at"
+        ],
+        "additionalProperties": false,
+        "description": "Separately dated routing-status evidence for the requested resource. Peer counts are RIS visibility, not collector counts or a reachability guarantee. First/last seen may describe a containing route; its prefix is retained."
+      },
+      "ROA": {
+        "type": "object",
+        "properties": {
+          "prefix": {
+            "type": "string"
+          },
+          "asn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_length": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "prefix",
+          "asn",
+          "max_length"
+        ],
+        "additionalProperties": false
+      },
+      "OriginValidation": {
+        "type": "object",
+        "properties": {
+          "asn": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "invalid_asn",
+              "invalid_length",
+              "not_found",
+              "unavailable"
+            ]
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "covering_roas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ROA"
+            },
+            "maxItems": 32
+          },
+          "roas_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "asn",
+          "status",
+          "observed_at",
+          "covering_roas",
+          "roas_truncated"
+        ],
+        "additionalProperties": false,
+        "description": "Current prefix/ASN validation. not_found is not invalid. Empty covering_roas means none were supplied in a supported shape, not proof that no ROA exists. At most 32 supplied covering ROAs are shown; validity is the source finding, not recomputed from this explanation list."
+      },
+      "RPKIExplanation": {
+        "type": "object",
+        "properties": {
+          "prefix": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "observed_origins",
+              "proposed_asn"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "invalid",
+              "not_found",
+              "mixed",
+              "partial"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ]
+          },
+          "origin_limit": {
+            "type": "integer",
+            "const": 4
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "origins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OriginValidation"
+            },
+            "maxItems": 4
+          },
+          "origin_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "origin_expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "prefix",
+          "basis",
+          "status",
+          "completeness",
+          "origin_limit",
+          "truncated",
+          "origins"
+        ],
+        "additionalProperties": false,
+        "description": "Current validation, never historical validation. Complete describes supplied origin pairs within RIS visibility; it is not global coverage. Any missing, malformed, failed or omitted origin yields partial. proposed_asn is a separate customer-supplied prefix/ASN pair, not an observed origin. Freshness is carried by the parent observation; stale findings never pass."
       }
     }
   }

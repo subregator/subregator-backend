@@ -246,7 +246,7 @@ func TestRPKIUsesExplicitPrefixASNPair(t *testing.T) {
 			if r.URL.Query().Get("resource") != "13335" || r.URL.Query().Get("prefix") != "1.1.1.0/24" {
 				t.Error("wrong RPKI pair")
 			}
-			return response(200, `{"status":"ok","data":{"status":"valid"}}`), nil
+			return response(200, `{"status":"ok","data":{"prefix":"1.1.1.0/24","resource":"13335","status":"valid"}}`), nil
 		}
 		return nil, fmt.Errorf("unexpected request")
 	})

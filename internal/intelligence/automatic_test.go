@@ -104,7 +104,7 @@ func TestAutomaticWorkerDeduplicatesPublishedPrefixesAndRestores(t *testing.T) {
 		case strings.Contains(r.URL.Host, "spamhaus"):
 			return response(200, dropFixture(now)), nil
 		case strings.Contains(r.URL.Path, "prefix-overview"):
-			return response(200, `{"status":"ok","data":{"resource":"1.1.1.0/24","asns":[{"asn":13335}],"announced":true,"is_less_specific":false,"num_filtered_out":0}}`), nil
+			return response(200, `{"status":"ok","data":{"resource":"1.1.1.0/24","announced":true,"is_less_specific":false,"num_filtered_out":0,"asns":[{"asn":13335}],"announced":true,"is_less_specific":false,"num_filtered_out":0}}`), nil
 		case strings.Contains(r.URL.Path, "rpki-validation"):
 			return response(200, `{"status":"ok","data":{"prefix":"1.1.1.0/24","resource":"13335","status":"valid"}}`), nil
 		default:
@@ -183,7 +183,7 @@ func TestRPKIReusesPrefixObservationAndPreservesSourceFailure(t *testing.T) {
 	s := mockService(t, func(r *http.Request) (*http.Response, error) {
 		if strings.Contains(r.URL.Path, "prefix-overview") {
 			overview.Add(1)
-			return response(200, `{"status":"ok","data":{"resource":"1.1.1.0/24","asns":[{"asn":13335}]}}`), nil
+			return response(200, `{"status":"ok","data":{"resource":"1.1.1.0/24","announced":true,"is_less_specific":false,"num_filtered_out":0,"asns":[{"asn":13335}]}}`), nil
 		}
 		return response(200, `{"status":"ok","data":{"prefix":"1.1.1.0/24","resource":"13335","status":"valid"}}`), nil
 	})
