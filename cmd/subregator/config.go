@@ -13,6 +13,8 @@ import (
 )
 
 type config struct {
+	AbuseIPDB       bool
+	AbuseIPDBKey    string
 	IRR             bool
 	RequestsRPS     int
 	MaxConcurrent   int
@@ -41,10 +43,11 @@ func loadConfig(args []string, getenv func(string) string, output io.Writer) (co
 	fs.SetOutput(output)
 	fs.StringVar(&c.Addr, "addr", env("ADDR", "127.0.0.1:8080"), "HTTP listen address (SUBREGATOR_ADDR)")
 	c.DatabaseURL = env("DATABASE_URL", "postgresql://subregator@127.0.0.1:5432/subregator?sslmode=disable")
+	abuse := fs.String("abuseipdb", env("ABUSEIPDB", "false"), "Enable AbuseIPDB only after account, quota and data-use approval (SUBREGATOR_ABUSEIPDB)")
 	irr := fs.String("irr", env("IRR", "false"), "Enable IRRexplorer collection only after confirming source quotas and publication/retention rights (SUBREGATOR_IRR)")
 	requestsRPS := fs.String("requests-rps", env("REQUESTS_RPS", "100"), "Global HTTP requests per second and burst (SUBREGATOR_REQUESTS_RPS)")
 	maxConcurrent := fs.String("max-concurrent", env("MAX_CONCURRENT", "32"), "Maximum simultaneous HTTP operations (SUBREGATOR_MAX_CONCURRENT)")
-	checksRPM := fs.String("checks-rpm", env("CHECKS_RPM", "120"), "Maximum free upstream requests per minute (SUBREGATOR_CHECKS_RPM)")
+	checksRPM := fs.String("checks-rpm", env("CHECKS_RPM", "120"), "Maximum upstream requests per minute (SUBREGATOR_CHECKS_RPM)")
 	fs.StringVar(&c.Snapshot, "snapshot", env("SNAPSHOT", "var/catalog.json"), "Legacy snapshot import path (SUBREGATOR_SNAPSHOT)")
 	fs.StringVar(&c.FeedsDir, "feeds-dir", env("FEEDS_DIR", ""), "Canonical feed directory (SUBREGATOR_FEEDS_DIR)")
 	fs.StringVar(&c.Providers, "providers", env("PROVIDERS", ""), "Provider registry JSON (SUBREGATOR_PROVIDERS)")
@@ -57,6 +60,15 @@ func loadConfig(args []string, getenv func(string) string, output io.Writer) (co
 	}
 	if fs.NArg() != 0 {
 		return c, errors.New("unexpected positional arguments")
+	}
+	var abuseError error
+	c.AbuseIPDB, abuseError = strconv.ParseBool(*abuse)
+	if abuseError != nil {
+		return c, errors.New("invalid SUBREGATOR_ABUSEIPDB/abuseipdb value")
+	}
+	c.AbuseIPDBKey = getenv("SUBREGATOR_ABUSEIPDB_KEY")
+	if len(c.AbuseIPDBKey) > 1024 || strings.TrimSpace(c.AbuseIPDBKey) != c.AbuseIPDBKey || strings.ContainsAny(c.AbuseIPDBKey, "\r\n") {
+		return c, errors.New("invalid AbuseIPDB key format")
 	}
 	var irrError error
 	c.IRR, irrError = strconv.ParseBool(*irr)

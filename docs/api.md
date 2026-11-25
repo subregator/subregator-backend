@@ -70,6 +70,8 @@ Collection throughput is bounded by source quotas, independently of fast catalog
 
 ## Cached network observations
 
+Optional `abuse` exposes source report counts, dates, actual search ranges and query windows without raw complaint logs. It is off by default and requires an approved AbuseIPDB account/key and public use/retention conditions. See the [abuse observation contract](abuse.md). Zero reports is not a safety or resolution finding.
+
 Optional `irr` compares registry route/route6 objects with observed BGP origins. It is off by default until source quotas and public use/retention rights are confirmed. See [IRR consistency](irr.md) for configuration, distinct outcomes, scope and pilot evidence.
 
 BGP scope, separately dated RIS visibility and per-origin RPKI results are documented in the [routing explanation contract](routing.md). Exact and covering routes remain distinct; filtered, truncated or failed origins remain partial. Proposed ASN validation is separate from observed origins.
@@ -78,7 +80,7 @@ Current `rdap` and `registration` metrics include typed registry records, RIR, r
 
 Every metric and embedded offer check includes an additive `observation` envelope that separates collection status, freshness, completeness and typed scope from the existing finding. See the [observation contract](check-results.md) for states, examples and compatibility. `/api/v1/network/checks` reports which metric definitions are collected automatically; other definitions do not imply scheduled collection.
 
-`GET /api/v1/network/status` and MCP `network_status` return aggregate process-local coverage for the six existing automatic checks plus the optional, default-disabled IRR check, observation age, due/unscheduled prefixes and jobs, running/suppressed work, scheduling lag, source request counts/duration/failures, budget waits/denials and persistence failures. Reads call no upstream source or database and return no prefix IDs or credential-bearing URLs. Counters reset on restart; metadata-only coverage is rebuilt as the worker restores/recollects observations. A missing collector returns 503. `scheduler_policy` is `per_check_ttl`; the legacy sweep-floor field is deprecated and zero because artificial prefix pacing was removed. See [scheduling rules](scheduling.md), the [capacity report](collection-capacity.md) and [source-access inventory](source-access.md).
+`GET /api/v1/network/status` and MCP `network_status` return aggregate process-local coverage for the six existing automatic checks plus the optional, default-disabled IRR and abuse checks, observation age, due/unscheduled prefixes and jobs, running/suppressed work, scheduling lag, source request counts/duration/failures, budget waits/denials and persistence failures. Reads call no upstream source or database and return no prefix IDs or credential-bearing URLs. Counters reset on restart; metadata-only coverage is rebuilt as the worker restores/recollects observations. A missing collector returns 503. `scheduler_policy` is `per_check_ttl`; the legacy sweep-floor field is deprecated and zero because artificial prefix pacing was removed. See [scheduling rules](scheduling.md), the [capacity report](collection-capacity.md) and [source-access inventory](source-access.md).
 
 ```sh
 curl 'http://localhost:8080/api/v1/network/checks'

@@ -315,7 +315,7 @@ func decorateRouting(m Metric, target Target, asn uint32) Metric {
 }
 
 func metricPartial(m Metric) bool {
-	return m.Status != "ok" || m.Name == "irr" && m.IRR == nil || m.IRR != nil && (m.IRR.Completeness != "complete" || m.IRR.Status == "bgp_unavailable" || m.IRR.Status == "partial") || m.Name == "rpki" && m.RPKI == nil || m.Name == "prefix_overview" && m.BGP == nil || m.RPKI != nil && m.RPKI.Completeness != "complete" || m.BGP != nil && m.BGP.Completeness != "complete"
+	return m.Status != "ok" || m.Name == "abuse" && (m.Abuse == nil || m.Abuse.Completeness != "complete") || m.Name == "irr" && m.IRR == nil || m.IRR != nil && (m.IRR.Completeness != "complete" || m.IRR.Status == "bgp_unavailable" || m.IRR.Status == "partial") || m.Name == "rpki" && m.RPKI == nil || m.Name == "prefix_overview" && m.BGP == nil || m.RPKI != nil && m.RPKI.Completeness != "complete" || m.BGP != nil && m.BGP.Completeness != "complete"
 }
 
 func reconcileRPKI(m *Metric, overview Metric) {

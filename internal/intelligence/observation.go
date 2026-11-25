@@ -29,11 +29,11 @@ type Observation struct {
 func observation(status string, observed, expires *time.Time, now time.Time) Observation {
 	o := Observation{CollectionStatus: "unknown", Freshness: "unknown", Completeness: "unknown"}
 	switch status {
-	case "pending", "disabled", "not_configured", "not_applicable", "no_data", "rate_limited":
+	case "plan_limited", "pending", "disabled", "not_configured", "not_applicable", "no_data", "rate_limited":
 		o.CollectionStatus = status
 	case "unavailable":
 		o.CollectionStatus = "failed"
-	case "consistent", "conflict", "missing_objects", "bgp_absent", "bgp_unavailable", "ok", "stale", "announced", "not_announced", "covering_route", "valid", "invalid", "not_found", "mixed", "partial", "listed", "not_listed":
+	case "reports_observed", "no_reports_in_window", "consistent", "conflict", "missing_objects", "bgp_absent", "bgp_unavailable", "ok", "stale", "announced", "not_announced", "covering_route", "valid", "invalid", "not_found", "mixed", "partial", "listed", "not_listed":
 		if observed != nil {
 			o.CollectionStatus = "succeeded"
 		}
@@ -54,6 +54,17 @@ func metricObservation(m Metric, target Target, q Query, now time.Time) Observat
 		o.FailureReason = m.Error
 	}
 	if m.Status != "ok" && m.Status != "stale" || m.ObservedAt == nil {
+		return o
+	}
+	if m.Abuse != nil {
+		o.Completeness = m.Abuse.Completeness
+		o.Scope.Resource = m.Abuse.Prefix
+		o.Scope.Relation = m.Abuse.ScopeRelation
+		if m.Abuse.ScopeRelation == "contained" {
+			o.Scope.Resource = m.Abuse.RangeStart + " - " + m.Abuse.RangeEnd
+		}
+		o.Scope.StartTime = m.Abuse.WindowStart.Format(time.RFC3339Nano)
+		o.Scope.EndTime = m.Abuse.WindowEnd.Format(time.RFC3339Nano)
 		return o
 	}
 	if m.IRR != nil {
@@ -146,6 +157,17 @@ func checkObservation(c Check, resource, name string, now time.Time) Observation
 	if c.ObservedAt == nil {
 		return o
 	}
+	if c.Abuse != nil {
+		o.Completeness = c.Abuse.Completeness
+		o.Scope.Resource = c.Abuse.Prefix
+		o.Scope.Relation = c.Abuse.ScopeRelation
+		if c.Abuse.ScopeRelation == "contained" {
+			o.Scope.Resource = c.Abuse.RangeStart + " - " + c.Abuse.RangeEnd
+		}
+		o.Scope.StartTime = c.Abuse.WindowStart.Format(time.RFC3339Nano)
+		o.Scope.EndTime = c.Abuse.WindowEnd.Format(time.RFC3339Nano)
+		return o
+	}
 	if c.IRR != nil {
 		o.Completeness = c.IRR.Completeness
 		o.Scope.Resource = c.IRR.Prefix
@@ -189,7 +211,13 @@ func checkObservation(c Check, resource, name string, now time.Time) Observation
 func (s *Service) initialMetric(target Target, name string, q Query) Metric {
 	d := definitions[name]
 	m := Metric{Name: name, Status: "pending", Source: d.Source, Coverage: d.Coverage, Data: json.RawMessage("null")}
-	if name == "irr" && !s.irrEnabled {
+	if name == "abuse" && !s.abuseConfigured() {
+		m.Status = "not_configured"
+		m.Error = "AbuseIPDB requires an approved account, key, quota and publication/retention rights"
+	} else if name == "abuse" && (!abuseSupported(target) || q.ASN != 0 || q.StartTime != "" || q.EndTime != "" || q.Version != "") {
+		m.Status = "not_applicable"
+		m.Error = "Abuse collection supports current IPv4 /24-/31 or IPv6 /120-/127 with a fixed 30-day window; single-host, broader, historical and proposed-ASN queries are unsupported"
+	} else if name == "irr" && !s.irrEnabled {
 		m.Status = "not_configured"
 		m.Error = "IRR source access, quotas and publication/retention rights are not configured"
 	} else if name == "irr" && (q.ASN != 0 || q.StartTime != "" || q.EndTime != "" || q.Version != "") {

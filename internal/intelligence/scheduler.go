@@ -35,6 +35,11 @@ func nextCheck(m Metric, previous scheduledCheck, now time.Time) scheduledCheck 
 	switch m.Status {
 	case "disabled", "not_configured", "not_applicable":
 		return next
+	case "plan_limited":
+		next.Next = now
+		if m.ExpiresAt != nil && m.ExpiresAt.After(now) {
+			next.Next = *m.ExpiresAt
+		}
 	case "pending":
 		next.Next = now
 	case "ok", "no_data":
@@ -228,7 +233,7 @@ func (a *Automatic) restoreSchedule(ctx context.Context, key string, names []str
 		if !a.service.network {
 			a.jobs[key][m.Name] = scheduledCheck{}
 		}
-		if m.Name == "prefix_overview" || m.Name == "rpki" || m.Name == "routing_status" || m.Name == "irr" {
+		if m.Name == "prefix_overview" || m.Name == "rpki" || m.Name == "routing_status" || m.Name == "irr" || m.Name == "abuse" {
 			a.evidence[key][m.Name] = compactEvidence(m)
 		}
 	}
@@ -252,7 +257,7 @@ func (a *Automatic) completeCheck(ctx context.Context, result checkResult) {
 		jobs[result.Name] = scheduledCheck{Next: result.Next}
 	} else {
 		jobs[result.Name] = nextCheck(result.Metric, jobs[result.Name], time.Now())
-		if result.Name == "prefix_overview" || result.Name == "rpki" || result.Name == "routing_status" || result.Name == "irr" {
+		if result.Name == "prefix_overview" || result.Name == "rpki" || result.Name == "routing_status" || result.Name == "irr" || result.Name == "abuse" {
 			a.evidence[result.Key][result.Name] = compactEvidence(result.Metric)
 		}
 	}
@@ -297,10 +302,11 @@ func (a *Automatic) syncDue(key string) {
 }
 
 func compactEvidence(m Metric) Metric {
+	m.Abuse = nil
 	m.IRR = nil
 	m.BGP = nil
 	m.RPKI = nil
-	if m.Name == "irr" {
+	if m.Name == "irr" || m.Name == "abuse" {
 		return m
 	}
 	if m.Name == "prefix_overview" {
