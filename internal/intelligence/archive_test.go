@@ -94,3 +94,28 @@ func TestHistoryPolicyDefaultAndValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRegistryArchiveReorderedFactsDoNotChangeState(t *testing.T) {
+	cache := &recordingArchive{}
+	s := New(cache, false, "", 120)
+	if err := s.SetHistoryChecks("rdap"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	expiry := now.Add(time.Hour)
+	a := `{"objectClassName":"ip network","handle":"NET-1","name":"network","startAddress":"1.1.1.0","endAddress":"1.1.1.255","status":["active","validated"],"events":[{"eventAction":"registration","eventDate":"2020-01-01T00:00:00Z"},{"eventAction":"last changed","eventDate":"2021-01-01T00:00:00Z"}],"entities":[{"handle":"ORG-A","roles":["registrant"],"status":["validated","active"]},{"handle":"ORG-B","roles":["registrant"]}]}`
+	b := `{"objectClassName":"ip network","handle":"NET-1","name":"network","startAddress":"1.1.1.0","endAddress":"1.1.1.255","status":["validated","active"],"events":[{"eventAction":"last changed","eventDate":"2021-01-01T00:00:00Z"},{"eventAction":"registration","eventDate":"2020-01-01T00:00:00Z"}],"entities":[{"handle":"ORG-B","roles":["registrant"]},{"handle":"ORG-A","roles":["registrant"],"status":["active","validated"]}]}`
+	target := Target{Value: "1.1.1.0/24", Kind: "prefix"}
+	for _, data := range []string{a, b} {
+		s.archiveMetric(context.Background(), target, Query{}, Metric{Name: "rdap", Source: "RIR RDAP", SourceURL: "https://rdap.apnic.net/ip/1.1.1.0/24", Status: "ok", ObservedAt: &now, ExpiresAt: &expiry, Data: json.RawMessage(data)})
+	}
+	if len(cache.records) != 2 || !cache.records[0].Comparable || !cache.records[1].Comparable {
+		t.Fatalf("noncomparable registry fixture: %+v", cache.records)
+	}
+	if string(cache.records[0].State) != string(cache.records[1].State) {
+		t.Fatal("identical registry facts produced different comparison state")
+	}
+	if string(cache.records[0].Evidence) == string(cache.records[1].Evidence) {
+		t.Fatal("original normalized evidence was rewritten")
+	}
+}

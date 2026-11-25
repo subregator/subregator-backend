@@ -25,7 +25,7 @@ func TestNetworkHistoryRESTMCPAndPublication(t *testing.T) {
 	}
 	at := time.Now().UTC().Add(-time.Minute)
 	expires := at.Add(time.Hour)
-	record := intelligence.ArchivedObservation{Resource: prefix, Check: "prefix_overview", Source: "fixture", ObservedAt: &at, IngestedAt: time.Now().UTC(), ExpiresAt: &expires, Observation: intelligence.Observation{CollectionStatus: "succeeded", Freshness: "fresh", Completeness: "complete", Scope: intelligence.ObservationScope{Resource: prefix, Requested: prefix, Kind: "prefix", Relation: "exact"}}, Evidence: json.RawMessage(`{"origins":[13335]}`), State: json.RawMessage(`{"origins":[13335]}`), Comparable: true}
+	record := intelligence.ArchivedObservation{Resource: prefix, Check: "prefix_overview", Source: "fixture", ObservedAt: &at, AttemptedAt: at, IngestedAt: time.Now().UTC(), ExpiresAt: &expires, Observation: intelligence.Observation{CollectionStatus: "succeeded", Freshness: "fresh", Completeness: "complete", Scope: intelligence.ObservationScope{Resource: prefix, Requested: prefix, Kind: "prefix", Relation: "exact"}}, Evidence: json.RawMessage(`{"origins":[13335]}`), State: json.RawMessage(`{"origins":[13335]}`), Comparable: true}
 	if err := d.SaveObservation(context.Background(), record); err != nil {
 		t.Fatal(err)
 	}

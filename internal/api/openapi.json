@@ -4712,6 +4712,11 @@
           },
           "gap": {
             "type": "boolean"
+          },
+          "attempted_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Immutable local collection-attempt time, independent of ingestion/replay"
           }
         },
         "required": [
@@ -4730,7 +4735,8 @@
           "observation",
           "evidence",
           "event",
-          "gap"
+          "gap",
+          "attempted_at"
         ]
       },
       "ObservationHistoryResult": {

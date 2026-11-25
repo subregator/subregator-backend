@@ -12,7 +12,7 @@ import (
 
 func archiveFixture(resource, check, state string, at time.Time) intelligence.ArchivedObservation {
 	expires := at.Add(time.Hour)
-	return intelligence.ArchivedObservation{Resource: resource, Check: check, Source: "fixture", SourceURL: "https://example.com/source", ObservedAt: &at, SourceUpdatedAt: &at, IngestedAt: at.Add(time.Second), ExpiresAt: &expires, Observation: intelligence.Observation{CollectionStatus: "succeeded", Freshness: "fresh", Completeness: "complete", Scope: intelligence.ObservationScope{Requested: resource, Resource: resource, Kind: "prefix", Relation: "exact"}}, State: json.RawMessage(state), Evidence: json.RawMessage(state), Comparable: true}
+	return intelligence.ArchivedObservation{Resource: resource, Check: check, Source: "fixture", SourceURL: "https://example.com/source", ObservedAt: &at, SourceUpdatedAt: &at, AttemptedAt: at, IngestedAt: at.Add(time.Second), ExpiresAt: &expires, Observation: intelligence.Observation{CollectionStatus: "succeeded", Freshness: "fresh", Completeness: "complete", Scope: intelligence.ObservationScope{Requested: resource, Resource: resource, Kind: "prefix", Relation: "exact"}}, State: json.RawMessage(state), Evidence: json.RawMessage(state), Comparable: true}
 }
 
 func TestObservationDurabilityReplayGapsAndOrdering(t *testing.T) {
@@ -219,5 +219,29 @@ func TestObservationConflictingReplayCannotReplaceBaseline(t *testing.T) {
 	}
 	if len(out.Items) != 3 || out.Items[1].Event != "out_of_order" || out.Items[2].Event != "delisted" || !out.Items[2].Gap || out.Items[2].PreviousSeen == nil || !out.Items[2].PreviousSeen.Equal(at) {
 		t.Fatalf("conflicting replay changed baseline: %+v", out.Items)
+	}
+}
+
+func TestObservationFailedReplayIsIdempotent(t *testing.T) {
+	d, _ := setup(t)
+	ctx := context.Background()
+	at := time.Now().UTC().Add(-time.Hour)
+	failed := archiveFixture("1.1.1.0/24", "spamhaus_drop", `null`, at)
+	failed.ObservedAt = nil
+	failed.Comparable = false
+	failed.Observation.CollectionStatus = "failed"
+	if err := d.SaveObservation(ctx, failed); err != nil {
+		t.Fatal(err)
+	}
+	failed.IngestedAt = at.Add(20 * time.Minute)
+	if err := d.SaveObservation(ctx, failed); err != nil {
+		t.Fatal(err)
+	}
+	out, err := d.Observations(ctx, failed.Resource, 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 1 {
+		t.Fatalf("one failed attempt replay created %d rows", len(out.Items))
 	}
 }

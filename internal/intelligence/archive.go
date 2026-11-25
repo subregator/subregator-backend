@@ -1,6 +1,7 @@
 package intelligence
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ type ArchivedObservation struct {
 	SourceURL       string          `json:"source_url,omitempty"`
 	ObservedAt      *time.Time      `json:"observed_at"`
 	SourceUpdatedAt *time.Time      `json:"source_updated_at"`
+	AttemptedAt     time.Time       `json:"attempted_at"`
 	IngestedAt      time.Time       `json:"ingested_at"`
 	ExpiresAt       *time.Time      `json:"expires_at"`
 	Observation     Observation     `json:"observation"`
@@ -45,7 +47,7 @@ func (s *Service) archiveMetric(ctx context.Context, target Target, q Query, m M
 	m = decorateRegistration(m, target)
 	m = decorateRouting(m, target, 0)
 	o := metricObservation(m, target, q, time.Now())
-	r := ArchivedObservation{Resource: target.Value, Check: m.Name, Source: m.Source, SourceURL: m.SourceURL, ObservedAt: m.ObservedAt, SourceUpdatedAt: m.SourceUpdatedAt, ExpiresAt: m.ExpiresAt, Observation: o, IngestedAt: time.Now().UTC()}
+	r := ArchivedObservation{Resource: target.Value, Check: m.Name, Source: m.Source, SourceURL: m.SourceURL, ObservedAt: m.ObservedAt, SourceUpdatedAt: m.SourceUpdatedAt, ExpiresAt: m.ExpiresAt, Observation: o, AttemptedAt: time.Now().UTC(), IngestedAt: time.Now().UTC()}
 	var evidence any
 	var state any
 	switch {
@@ -65,7 +67,18 @@ func (s *Service) archiveMetric(ctx context.Context, target Target, q Query, m M
 		state = states
 	case m.Registration != nil:
 		evidence = m.Registration
-		state = m.Registration.Records
+		records := slices.Clone(m.Registration.Records)
+		for i := range records {
+			r := &records[i]
+			r.Statuses = orderedRegistryValues(r.Statuses)
+			r.Entities = slices.Clone(r.Entities)
+			for j := range r.Entities {
+				r.Entities[j].Statuses = orderedRegistryValues(r.Entities[j].Statuses)
+			}
+			r.Entities = orderedRegistryValues(r.Entities)
+			r.Events = orderedRegistryValues(r.Events)
+		}
+		state = orderedRegistryValues(records)
 	}
 	if m.BGP != nil && m.BGP.QueryTime != nil {
 		r.SourceUpdatedAt = m.BGP.QueryTime
@@ -81,7 +94,7 @@ func (s *Service) archiveDROP(ctx context.Context, resource string, c Check) {
 		return
 	}
 	o := checkObservation(c, resource, "spamhaus_drop", time.Now())
-	r := ArchivedObservation{Resource: resource, Check: "spamhaus_drop", Source: c.Source, SourceURL: c.SourceURL, ObservedAt: c.ObservedAt, SourceUpdatedAt: c.SourceUpdatedAt, ExpiresAt: c.ExpiresAt, Observation: o, IngestedAt: time.Now().UTC()}
+	r := ArchivedObservation{Resource: resource, Check: "spamhaus_drop", Source: c.Source, SourceURL: c.SourceURL, ObservedAt: c.ObservedAt, SourceUpdatedAt: c.SourceUpdatedAt, ExpiresAt: c.ExpiresAt, Observation: o, AttemptedAt: time.Now().UTC(), IngestedAt: time.Now().UTC()}
 	r.Evidence, _ = json.Marshal(c)
 	r.State, _ = json.Marshal(c.Status)
 	r.Comparable = o.CollectionStatus == "succeeded" && o.Completeness == "complete" && o.Freshness == "fresh" && (c.Status == "listed" || c.Status == "not_listed")
@@ -113,3 +126,14 @@ func (s *Service) SetHistoryChecks(raw string) error {
 	return nil
 }
 func (s *Service) HistoryChecks() []string { return slices.Clone(s.historyChecks) }
+
+func orderedRegistryValues[T any](values []T) []T {
+	values = slices.Clone(values)
+	compare := func(a, b T) int {
+		left, _ := json.Marshal(a)
+		right, _ := json.Marshal(b)
+		return bytes.Compare(left, right)
+	}
+	slices.SortFunc(values, compare)
+	return slices.CompactFunc(values, func(a, b T) bool { return compare(a, b) == 0 })
+}

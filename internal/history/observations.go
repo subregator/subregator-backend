@@ -28,7 +28,7 @@ const observationSchema = `
  INSERT INTO schema_migrations(version) VALUES(2) ON CONFLICT DO NOTHING;`
 
 func (d *DB) SaveObservation(ctx context.Context, r intelligence.ArchivedObservation) error {
-	if r.Resource == "" || r.Source == "" || r.IngestedAt.IsZero() || !json.Valid(r.Evidence) || !json.Valid(r.State) || len(r.Evidence) > 64<<10 || len(r.State) > 64<<10 {
+	if r.Resource == "" || r.Source == "" || r.IngestedAt.IsZero() || r.AttemptedAt.IsZero() || r.AttemptedAt.After(r.IngestedAt.Add(time.Minute)) || !json.Valid(r.Evidence) || !json.Valid(r.State) || len(r.Evidence) > 64<<10 || len(r.State) > 64<<10 {
 		return errors.New("invalid archived observation")
 	}
 	switch r.Check {
@@ -39,7 +39,7 @@ func (d *DB) SaveObservation(ctx context.Context, r intelligence.ArchivedObserva
 	if target, err := intelligence.ParseTarget(r.Resource); err != nil || target.Kind != "prefix" || target.Value != r.Resource {
 		return errors.New("canonical prefix required")
 	}
-	collected := r.IngestedAt
+	collected := r.AttemptedAt
 	if r.ObservedAt != nil && r.Observation.CollectionStatus == "succeeded" && r.Observation.Freshness == "fresh" {
 		collected = *r.ObservedAt
 	}
