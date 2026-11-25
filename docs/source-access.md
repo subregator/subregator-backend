@@ -51,3 +51,7 @@ The local provider registry is the operational policy record; these entries do n
 - Respect current provider publication rules in live offers, correlations, history, exports and external lookups. Never reconstruct hidden prefixes.
 
 BE-01's inventory deliverable is complete when these unknowns are explicit and each integration has an actionable access gate. Obtaining third-party approval remains a blocker on the relevant integration, not evidence that it is already usable.
+
+## BE-07 pilot — 2026-11-25
+
+The selected minimal adapter uses the existing hosted IRRexplorer JSON API, not a self-hosted IRR stack. One IPv4 and one IPv6 prefix request plus metadata returned HTTP 200 without authentication. The Go normalizer accepted both captured shapes; IPv6 returned a containing route rather than an exact object, and old registry update dates remained stale. This verifies those responses only. No numeric quota, public API redistribution or retention grant was confirmed. The new `SUBREGATOR_IRR` gate defaults to false, publishes `not_configured`, and suppresses source collection and retained IRR output until the operator conditions are confirmed. See [IRR contract and pilot](irr.md). No operator message was sent.

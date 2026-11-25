@@ -57,6 +57,8 @@ func upstreamName(raw string) string {
 		return "other"
 	}
 	switch strings.ToLower(u.Hostname()) {
+	case "irrexplorer.nlnog.net":
+		return "IRRexplorer"
 	case "stat.ripe.net":
 		return "RIPEstat"
 	case "data.iana.org":
@@ -131,7 +133,7 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 	now := time.Now().UTC()
 	active := publishedPrefixes(store)
 	out := CollectionStatus{GeneratedAt: now, EligiblePrefixes: len(active), Checks: []CheckCoverage{}, Upstreams: []UpstreamStats{}, SchedulerPolicy: "per_check_ttl", Semantics: "process_local_collection_health_not_subnet_safety"}
-	names := []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "spamhaus_drop"}
+	names := []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "spamhaus_drop", "irr"}
 	a.mu.RLock()
 	for key := range active {
 		due, scheduled := a.due[key]
@@ -167,6 +169,9 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 				}
 			}
 			o := observation("pending", nil, nil, now)
+			if name == "irr" && !a.service.irrEnabled {
+				o.CollectionStatus = "not_configured"
+			}
 			var observed *time.Time
 			if report, ok := a.reports[key]; ok {
 				var check *Check
@@ -175,6 +180,8 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 					check = &report.BGP
 				case "rpki":
 					check = &report.RPKI
+				case "irr":
+					check = report.IRR
 				case "spamhaus_drop":
 					check = &report.Blocklist
 				}

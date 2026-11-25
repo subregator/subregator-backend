@@ -13,6 +13,7 @@ import (
 )
 
 type config struct {
+	IRR             bool
 	RequestsRPS     int
 	MaxConcurrent   int
 	DatabaseURL     string
@@ -40,6 +41,7 @@ func loadConfig(args []string, getenv func(string) string, output io.Writer) (co
 	fs.SetOutput(output)
 	fs.StringVar(&c.Addr, "addr", env("ADDR", "127.0.0.1:8080"), "HTTP listen address (SUBREGATOR_ADDR)")
 	c.DatabaseURL = env("DATABASE_URL", "postgresql://subregator@127.0.0.1:5432/subregator?sslmode=disable")
+	irr := fs.String("irr", env("IRR", "false"), "Enable IRRexplorer collection only after confirming source quotas and publication/retention rights (SUBREGATOR_IRR)")
 	requestsRPS := fs.String("requests-rps", env("REQUESTS_RPS", "100"), "Global HTTP requests per second and burst (SUBREGATOR_REQUESTS_RPS)")
 	maxConcurrent := fs.String("max-concurrent", env("MAX_CONCURRENT", "32"), "Maximum simultaneous HTTP operations (SUBREGATOR_MAX_CONCURRENT)")
 	checksRPM := fs.String("checks-rpm", env("CHECKS_RPM", "120"), "Maximum free upstream requests per minute (SUBREGATOR_CHECKS_RPM)")
@@ -55,6 +57,11 @@ func loadConfig(args []string, getenv func(string) string, output io.Writer) (co
 	}
 	if fs.NArg() != 0 {
 		return c, errors.New("unexpected positional arguments")
+	}
+	var irrError error
+	c.IRR, irrError = strconv.ParseBool(*irr)
+	if irrError != nil {
+		return c, errors.New("invalid SUBREGATOR_IRR/irr value")
 	}
 	networkFlag := false
 	fs.Visit(func(f *flag.Flag) {

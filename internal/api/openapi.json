@@ -841,7 +841,7 @@
     "/api/v1/network": {
       "get": {
         "summary": "Inspect a public IP, subnet or ASN using free public sources",
-        "description": "Read stored observations only. This endpoint never runs or refreshes external checks. Checks without a cached observation remain pending; automatic checks cover published catalogue prefixes. Historical parameter combinations and standalone IP/ASN queries may have no stored observation. BGP and RPKI include normalized explanations. RPKI findings distinguish observed origins from a proposed ASN, individual invalid ASN/length and partial coverage. No unknown, stale or partial finding establishes a passing result.",
+        "description": "Read stored observations only. This endpoint never runs or refreshes external checks. Checks without a cached observation remain pending; automatic checks cover published catalogue prefixes. Historical parameter combinations and standalone IP/ASN queries may have no stored observation. BGP and RPKI include normalized explanations. RPKI findings distinguish observed origins from a proposed ASN, individual invalid ASN/length and partial coverage. No unknown, stale or partial finding establishes a passing result. Optional irr exposes source-scoped IRR consistency. It returns not_configured by default and not_applicable for unsupported query scope (IPv4 shorter than /9, IPv6 shorter than /29, IP or ASN). Cached public reads never enable collection.",
         "parameters": [
           {
             "name": "resource",
@@ -2159,6 +2159,9 @@
           },
           "rpki": {
             "$ref": "#/components/schemas/RPKIExplanation"
+          },
+          "irr": {
+            "$ref": "#/components/schemas/IRRExplanation"
           }
         },
         "required": [
@@ -2335,6 +2338,9 @@
           },
           "rpki": {
             "$ref": "#/components/schemas/RPKIExplanation"
+          },
+          "irr": {
+            "$ref": "#/components/schemas/IRRExplanation"
           }
         },
         "required": [
@@ -2365,6 +2371,9 @@
           },
           "semantics": {
             "type": "string"
+          },
+          "irr": {
+            "$ref": "#/components/schemas/OfferCheck"
           }
         },
         "required": [
@@ -3205,6 +3214,196 @@
         ],
         "additionalProperties": false,
         "description": "Current validation, never historical validation. Complete describes supplied origin pairs within RIS visibility; it is not global coverage. Any missing, malformed, failed or omitted origin yields partial. proposed_asn is a separate customer-supplied prefix/ASN pair, not an observed origin. Freshness is carried by the parent observation; stale findings never pass."
+      },
+      "IRRObject": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string",
+            "enum": [
+              "route",
+              "route6"
+            ]
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "registry": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "covering",
+              "contained"
+            ]
+          },
+          "matches_bgp": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "class",
+          "prefix",
+          "origin",
+          "registry",
+          "relation"
+        ],
+        "additionalProperties": false
+      },
+      "IRRRegistry": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "stale",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "freshness"
+        ],
+        "additionalProperties": false,
+        "description": "Source-reported last update, not object creation time or proof of mirror health. Local conservative age ceiling is 24 hours; missing or old dates cannot establish a passing comparison."
+      },
+      "IRRComparison": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation"
+          },
+          "origins": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "source_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "observation",
+          "origins",
+          "observed_at",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
+      "IRRExplanation": {
+        "type": "object",
+        "properties": {
+          "prefix": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "consistent",
+              "conflict",
+              "missing_objects",
+              "bgp_absent",
+              "bgp_unavailable",
+              "partial"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "object_limit": {
+            "type": "integer",
+            "const": 200
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IRRObject"
+            },
+            "maxItems": 200
+          },
+          "registries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IRRRegistry"
+            },
+            "maxItems": 64
+          },
+          "missing_origins": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "bgp": {
+            "$ref": "#/components/schemas/IRRComparison"
+          },
+          "metadata_url": {
+            "type": "string"
+          },
+          "metadata_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "prefix",
+          "status",
+          "completeness",
+          "truncated",
+          "object_limit",
+          "objects",
+          "registries",
+          "missing_origins",
+          "metadata_url"
+        ],
+        "additionalProperties": false,
+        "description": "IRRexplorer route objects compared with separately dated RIS origins. Source scoped, not ownership or universal routing acceptance. Duplicates and conflicts across registries are preserved; containing or contained routes never satisfy an exact-prefix origin. Unknown, stale or partial data never establishes a passing comparison. No raw RPSL or source score is published. Collection is off until source quotas and display/retention rights are configured."
       }
     }
   }

@@ -30,6 +30,7 @@ type Definition struct {
 }
 
 var definitions = map[string]Definition{
+	"irr":                  {Name: "irr", Source: "IRRexplorer", Description: "IRR route/route6 objects compared with observed BGP origins; optional and off until source access is approved", Coverage: "IRRexplorer mirrored registries; not ownership or universal routing acceptance", TTLSeconds: 3600, Kinds: []string{"prefix"}},
 	"asn_rank":             {Name: "asn_rank", Source: "CAIDA ASRank", Description: "Free customer-cone topology ranking of origin ASNs", Coverage: "ASN topology rank, not subnet reputation, traffic or packet reachability", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
 	"prefix_overview":      {Name: "prefix_overview", Source: "RIPEstat", Description: "Announced prefix and origin ASNs", Coverage: "RIS collector observations; not a packet reachability test", TTLSeconds: 300, Kinds: []string{"ip", "prefix"}},
 	"routing_status":       {Name: "routing_status", Source: "RIPEstat", Description: "Visibility, first/last routing observations and related routes", Coverage: "RIS collectors only", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
@@ -57,6 +58,7 @@ func Capabilities() []Definition {
 }
 
 type Metric struct {
+	IRR             *IRRExplanation  `json:"irr,omitempty"`
 	BGP             *BGPExplanation  `json:"bgp,omitempty"`
 	RPKI            *RPKIExplanation `json:"rpki,omitempty"`
 	Registration    *Registration    `json:"registration,omitempty"`
@@ -85,6 +87,7 @@ type call struct {
 	result Metric
 }
 type Service struct {
+	irrEnabled          bool
 	cache               Cache
 	client              *http.Client
 	network             bool
@@ -110,6 +113,9 @@ type Service struct {
 
 var ErrNoData = errors.New("no observation in source coverage")
 var ErrBusy = errors.New("network inspection capacity reached; retry later")
+
+// EnableIRR must run before collection starts, after source use is approved.
+func (s *Service) EnableIRR() { s.irrEnabled = true }
 
 func New(cache Cache, network bool, freeToken string, rpm int) *Service {
 	if rpm < 1 {
@@ -150,10 +156,21 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 	defer func() {
 		out = decorateRegistration(out, target)
 		out = decorateRouting(out, target, q.ASN)
+		out = decorateIRR(out, target, time.Now())
+		if out.IRR != nil {
+			var overview Metric
+			if q.overview != nil {
+				overview = *q.overview
+			} else {
+				dependency, _ := s.Cached(ctx, Query{Resource: target.Value, Checks: []string{"prefix_overview"}})
+				overview = dependency.Metrics[0]
+			}
+			compareIRR(&out, overview, target, time.Now())
+		}
 		out.Observation = metricObservation(out, target, q, time.Now())
 	}()
 	d := definitions[name]
-	m := s.initialMetric(target, name)
+	m := s.initialMetric(target, name, q)
 	if m.Status != "pending" {
 		return m
 	}
@@ -216,6 +233,9 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 	} else {
 		result = s.fetchMetric(ctx, target, q, m)
 		ttl := time.Duration(d.TTLSeconds) * time.Second
+		if name == "irr" && result.IRR != nil && result.IRR.Completeness != "complete" {
+			ttl = time.Minute
+		}
 		if result.Status != "ok" && result.Status != "no_data" {
 			ttl = 15 * time.Second
 			if result.Status != "no_data" && (previous.Status == "ok" || previous.Status == "stale") {
@@ -400,6 +420,8 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	var result Metric
 	var e error
 	switch m.Name {
+	case "irr":
+		result, e = s.irr(ctx, target)
 	case "rdap":
 		result, e = s.rdap(ctx, target)
 	case "ipinfo_lite":
@@ -481,6 +503,7 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	m.ObservedAt = result.ObservedAt
 	m.SourceURL = result.SourceURL
 	m.Registration = result.Registration
+	m.IRR = result.IRR
 	m.RetryAt = result.RetryAt
 	if m.Name == "registration" {
 		m.Registration = normalizeWhois(m.Data, m.SourceURL, target)

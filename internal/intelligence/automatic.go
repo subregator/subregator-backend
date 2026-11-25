@@ -11,6 +11,7 @@ import (
 )
 
 type Check struct {
+	IRR             *IRRExplanation  `json:"irr,omitempty"`
 	BGP             *BGPExplanation  `json:"bgp,omitempty"`
 	RPKI            *RPKIExplanation `json:"rpki,omitempty"`
 	Observation     Observation      `json:"observation"`
@@ -29,6 +30,7 @@ type Check struct {
 }
 
 type OfferChecks struct {
+	IRR       *Check `json:"irr,omitempty"`
 	Resource  string `json:"resource"`
 	BGP       Check  `json:"bgp"`
 	RPKI      Check  `json:"rpki"`
@@ -36,7 +38,7 @@ type OfferChecks struct {
 	Semantics string `json:"semantics"`
 }
 
-var automaticChecks = []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap"}
+var automaticChecks = []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "irr"}
 
 // Automatic is written only by Run; readers never schedule upstream work.
 type Automatic struct {
@@ -58,7 +60,8 @@ func unknownCheck() Check {
 	return Check{Status: "pending", Freshness: "unknown", Reason: "Awaiting automatic source checks"}
 }
 func pendingChecks(resource string) OfferChecks {
-	return OfferChecks{Resource: resource, BGP: unknownCheck(), RPKI: unknownCheck(), Blocklist: unknownCheck(), Semantics: "source_scoped_observations_not_safety_or_reputation"}
+	irr := unknownCheck()
+	return OfferChecks{Resource: resource, BGP: unknownCheck(), RPKI: unknownCheck(), Blocklist: unknownCheck(), IRR: &irr, Semantics: "source_scoped_observations_not_safety_or_reputation"}
 }
 func (a *Automatic) Get(resource string) OfferChecks {
 	a.mu.RLock()
@@ -67,12 +70,30 @@ func (a *Automatic) Get(resource string) OfferChecks {
 	if !ok {
 		r = pendingChecks(resource)
 	}
+	if r.IRR != nil {
+		check := *r.IRR
+		r.IRR = &check
+	}
 	now := time.Now()
-	for _, c := range []*Check{&r.BGP, &r.RPKI, &r.Blocklist} {
+	if !a.service.irrEnabled {
+		r.IRR = &Check{Status: "not_configured", Freshness: "unknown", Source: "IRRexplorer", Coverage: definitions["irr"].Coverage, Reason: "IRR collection requires confirmed source access, quotas and publication/retention rights"}
+	}
+	if r.IRR == nil {
+		irr := unknownCheck()
+		r.IRR = &irr
+	}
+	for _, c := range []*Check{&r.BGP, &r.RPKI, &r.Blocklist, r.IRR} {
 		if c.Freshness == "fresh" && (c.ExpiresAt == nil || !now.Before(*c.ExpiresAt)) {
 			c.Freshness = "stale"
 		}
 	}
+	if r.IRR.IRR != nil && r.IRR.Freshness != "fresh" {
+		detail := *r.IRR.IRR
+		detail.Status = "partial"
+		r.IRR.IRR = &detail
+		r.IRR.Status = "partial"
+	}
+	r.IRR.Observation = checkObservation(*r.IRR, resource, "irr", now)
 	r.BGP.Observation = checkObservation(r.BGP, resource, "prefix_overview", now)
 	r.RPKI.Observation = checkObservation(r.RPKI, resource, "rpki", now)
 	r.Blocklist.Observation = checkObservation(r.Blocklist, resource, "spamhaus_drop", now)
@@ -126,7 +147,8 @@ func (a *Automatic) publish(ctx context.Context, key string, r Report, blocklist
 			rpki.Freshness = bgp.Freshness
 		}
 	}
-	report := OfferChecks{Resource: key, BGP: bgp, RPKI: rpki, Blocklist: blocklist, Semantics: "source_scoped_observations_not_safety_or_reputation"}
+	irr := summarizeIRR(r, time.Now())
+	report := OfferChecks{IRR: &irr, Resource: key, BGP: bgp, RPKI: rpki, Blocklist: blocklist, Semantics: "source_scoped_observations_not_safety_or_reputation"}
 	due := time.Now().Add(5 * time.Minute)
 	for _, m := range r.Metrics {
 		if m.Status != "ok" || m.ExpiresAt == nil {

@@ -81,6 +81,9 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	checks := intelligence.New(database, cfg.Network, cfg.IPinfoLiteToken, cfg.ChecksRPM)
+	if cfg.IRR {
+		checks.EnableIRR()
+	}
 	automatic := intelligence.NewAutomatic(checks)
 	checksDone := make(chan struct{})
 	go func() { defer close(checksDone); automatic.Run(ctx, store) }()
