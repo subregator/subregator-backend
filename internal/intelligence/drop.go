@@ -32,6 +32,7 @@ func parseDrop(b []byte, ipv4 bool, now time.Time) (dropFeed, error) {
 	scan.Buffer(make([]byte, 4096), 1<<20)
 	feed := dropFeed{}
 	metadata := false
+	seen := map[DropMatch]bool{}
 	for scan.Scan() {
 		if len(bytes.TrimSpace(scan.Bytes())) == 0 {
 			continue
@@ -66,7 +67,12 @@ func parseDrop(b []byte, ipv4 bool, now time.Time) (dropFeed, error) {
 		if e != nil || p != p.Masked() || p.Addr().Is4() != ipv4 || p.Addr().Is4In6() || row.ID == "" {
 			return feed, bad
 		}
-		feed.Records = append(feed.Records, DropMatch{row.CIDR, row.ID})
+		record := DropMatch{row.CIDR, row.ID}
+		if seen[record] {
+			return feed, bad
+		}
+		seen[record] = true
+		feed.Records = append(feed.Records, record)
 	}
 	if scan.Err() != nil || !metadata || len(feed.Records) == 0 {
 		return feed, bad

@@ -37,6 +37,7 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 		m = decorateRouting(m, target, q.ASN)
 		m = decorateIRR(m, target, time.Now())
 		m = decorateAbuse(m, target, time.Now())
+		m = decorateBlocklists(m, target, time.Now())
 		if m.IRR != nil {
 			dependency, _ := s.Cached(ctx, Query{Resource: target.Value, Checks: []string{"prefix_overview"}})
 			compareIRR(&m, dependency.Metrics[0], target, time.Now())

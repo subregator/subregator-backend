@@ -31,6 +31,7 @@ type Definition struct {
 }
 
 var definitions = map[string]Definition{
+	"spamhaus_zen":         {Name: "spamhaus_zen", Source: "Spamhaus ZEN", Description: "Optional licensed SBL/XBL/PBL IP lookup; one first-address sample per prefix, never whole-subnet approval", Coverage: "One queried IP only; PBL is outbound mail policy, not abuse; source access and public use require approval", TTLSeconds: 3600, Kinds: []string{"ip", "prefix"}},
 	"abuse":                {Name: "abuse", Source: "AbuseIPDB", Description: "Optional source report summaries for IPv4 /24-/31 and IPv6 /120-/127, 30-day window; off until account and data use are approved", Coverage: "Source-reported addresses in the returned search range; not cleanliness, tenant attribution or resolution", TTLSeconds: 86400, Kinds: []string{"prefix"}},
 	"irr":                  {Name: "irr", Source: "IRRexplorer", Description: "IRR route/route6 objects compared with observed BGP origins; optional and off until source access is approved", Coverage: "IRRexplorer mirrored registries; not ownership or universal routing acceptance", TTLSeconds: 3600, Kinds: []string{"prefix"}},
 	"asn_rank":             {Name: "asn_rank", Source: "CAIDA ASRank", Description: "Free customer-cone topology ranking of origin ASNs", Coverage: "ASN topology rank, not subnet reputation, traffic or packet reachability", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
@@ -60,24 +61,25 @@ func Capabilities() []Definition {
 }
 
 type Metric struct {
-	Abuse           *AbuseObservation `json:"abuse,omitempty"`
-	IRR             *IRRExplanation   `json:"irr,omitempty"`
-	BGP             *BGPExplanation   `json:"bgp,omitempty"`
-	RPKI            *RPKIExplanation  `json:"rpki,omitempty"`
-	Registration    *Registration     `json:"registration,omitempty"`
-	RetryAt         *time.Time        `json:"retry_at,omitempty"`
-	SourceUpdatedAt *time.Time        `json:"source_updated_at,omitempty"`
-	Observation     Observation       `json:"observation"`
-	Name            string            `json:"name"`
-	Status          string            `json:"status"`
-	Source          string            `json:"source"`
-	SourceURL       string            `json:"source_url,omitempty"`
-	Coverage        string            `json:"coverage"`
-	ObservedAt      *time.Time        `json:"observed_at"`
-	ExpiresAt       *time.Time        `json:"expires_at"`
-	Cached          bool              `json:"cached"`
-	Error           string            `json:"error,omitempty"`
-	Data            json.RawMessage   `json:"data"`
+	Blocklists      *BlocklistObservation `json:"blocklists,omitempty"`
+	Abuse           *AbuseObservation     `json:"abuse,omitempty"`
+	IRR             *IRRExplanation       `json:"irr,omitempty"`
+	BGP             *BGPExplanation       `json:"bgp,omitempty"`
+	RPKI            *RPKIExplanation      `json:"rpki,omitempty"`
+	Registration    *Registration         `json:"registration,omitempty"`
+	RetryAt         *time.Time            `json:"retry_at,omitempty"`
+	SourceUpdatedAt *time.Time            `json:"source_updated_at,omitempty"`
+	Observation     Observation           `json:"observation"`
+	Name            string                `json:"name"`
+	Status          string                `json:"status"`
+	Source          string                `json:"source"`
+	SourceURL       string                `json:"source_url,omitempty"`
+	Coverage        string                `json:"coverage"`
+	ObservedAt      *time.Time            `json:"observed_at"`
+	ExpiresAt       *time.Time            `json:"expires_at"`
+	Cached          bool                  `json:"cached"`
+	Error           string                `json:"error,omitempty"`
+	Data            json.RawMessage       `json:"data"`
 }
 type Report struct {
 	Resource  Target   `json:"resource"`
@@ -90,6 +92,8 @@ type call struct {
 	result Metric
 }
 type Service struct {
+	spamhausEnabled     bool
+	spamhausKey         string
 	abuseEnabled        bool
 	abuseKey            string
 	irrEnabled          bool
@@ -163,6 +167,7 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 		out = decorateRouting(out, target, q.ASN)
 		out = decorateIRR(out, target, time.Now())
 		out = decorateAbuse(out, target, time.Now())
+		out = decorateBlocklists(out, target, time.Now())
 		if out.IRR != nil {
 			var overview Metric
 			if q.overview != nil {
@@ -399,7 +404,20 @@ func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes 
 	}
 	defer response.Body.Close()
 	status = response.StatusCode
+	if r.URL.Host == "apibl.spamhaus.net" && (response.StatusCode == 401 || response.StatusCode == 403) {
+		return nil, errSourceAccess
+	}
 	if response.StatusCode == 404 {
+		if r.URL.Host == "apibl.spamhaus.net" {
+			b, e := io.ReadAll(io.LimitReader(response.Body, 4097))
+			var negative struct {
+				Status int             `json:"status"`
+				Codes  json.RawMessage `json:"resp"`
+			}
+			if e != nil || len(b) > 4096 || json.Unmarshal(b, &negative) != nil || negative.Status != 404 || len(negative.Codes) != 0 {
+				return nil, errors.New("invalid Spamhaus negative response")
+			}
+		}
 		return nil, ErrNoData
 	}
 	if response.StatusCode == 402 && r.URL.Host == "api.abuseipdb.com" {
@@ -442,6 +460,8 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	var result Metric
 	var e error
 	switch m.Name {
+	case "spamhaus_zen":
+		result, e = s.zen(ctx, target)
 	case "abuse":
 		result, e = s.abuse(ctx, target)
 	case "irr":
@@ -507,6 +527,10 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	if e != nil {
 		m.Status = "unavailable"
 		m.Error = "Upstream source unavailable or response invalid"
+		if errors.Is(e, errSourceAccess) {
+			m.Status = "access_denied"
+			m.Error = "Spamhaus HTTPS product access denied"
+		}
 		if errors.Is(e, errSourcePlan) {
 			m.Status = "plan_limited"
 			m.Error = "Source account plan does not permit this query"
@@ -533,6 +557,7 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	m.Registration = result.Registration
 	m.IRR = result.IRR
 	m.Abuse = result.Abuse
+	m.Blocklists = result.Blocklists
 	m.RetryAt = result.RetryAt
 	if m.Name == "registration" {
 		m.Registration = normalizeWhois(m.Data, m.SourceURL, target)

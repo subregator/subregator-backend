@@ -29,7 +29,7 @@ type Observation struct {
 func observation(status string, observed, expires *time.Time, now time.Time) Observation {
 	o := Observation{CollectionStatus: "unknown", Freshness: "unknown", Completeness: "unknown"}
 	switch status {
-	case "plan_limited", "pending", "disabled", "not_configured", "not_applicable", "no_data", "rate_limited":
+	case "access_denied", "plan_limited", "pending", "disabled", "not_configured", "not_applicable", "no_data", "rate_limited":
 		o.CollectionStatus = status
 	case "unavailable":
 		o.CollectionStatus = "failed"
@@ -54,6 +54,13 @@ func metricObservation(m Metric, target Target, q Query, now time.Time) Observat
 		o.FailureReason = m.Error
 	}
 	if m.Status != "ok" && m.Status != "stale" || m.ObservedAt == nil {
+		return o
+	}
+	if m.Blocklists != nil {
+		o.Completeness = m.Blocklists.Completeness
+		o.Scope.Resource = m.Blocklists.Address
+		o.Scope.Kind = "ip"
+		o.Scope.Relation = m.Blocklists.ScopeRelation
 		return o
 	}
 	if m.Abuse != nil {
@@ -157,6 +164,13 @@ func checkObservation(c Check, resource, name string, now time.Time) Observation
 	if c.ObservedAt == nil {
 		return o
 	}
+	if c.Blocklists != nil {
+		o.Completeness = c.Blocklists.Completeness
+		o.Scope.Resource = c.Blocklists.Address
+		o.Scope.Kind = "ip"
+		o.Scope.Relation = c.Blocklists.ScopeRelation
+		return o
+	}
 	if c.Abuse != nil {
 		o.Completeness = c.Abuse.Completeness
 		o.Scope.Resource = c.Abuse.Prefix
@@ -211,7 +225,13 @@ func checkObservation(c Check, resource, name string, now time.Time) Observation
 func (s *Service) initialMetric(target Target, name string, q Query) Metric {
 	d := definitions[name]
 	m := Metric{Name: name, Status: "pending", Source: d.Source, Coverage: d.Coverage, Data: json.RawMessage("null")}
-	if name == "abuse" && !s.abuseConfigured() {
+	if name == "spamhaus_zen" && !s.spamhausConfigured() {
+		m.Status = "not_configured"
+		m.Error = "Spamhaus HTTPS product access, query key, quota and display/retention rights require approval"
+	} else if name == "spamhaus_zen" && (q.ASN != 0 || q.StartTime != "" || q.EndTime != "" || q.Version != "") {
+		m.Status = "not_applicable"
+		m.Error = "Spamhaus ZEN supports current IP observations only, without historical or proposed-ASN parameters"
+	} else if name == "abuse" && !s.abuseConfigured() {
 		m.Status = "not_configured"
 		m.Error = "AbuseIPDB requires an approved account, key, quota and publication/retention rights"
 	} else if name == "abuse" && (!abuseSupported(target) || q.ASN != 0 || q.StartTime != "" || q.EndTime != "" || q.Version != "") {

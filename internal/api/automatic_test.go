@@ -133,7 +133,7 @@ func TestNetworkCollectionStatusMCP(t *testing.T) {
 	}
 	b, _ := json.Marshal(result.StructuredContent)
 	var status intelligence.CollectionStatus
-	if json.Unmarshal(b, &status) != nil || len(status.Checks) != 8 || status.Semantics != "process_local_collection_health_not_subnet_safety" {
+	if json.Unmarshal(b, &status) != nil || len(status.Checks) != 9 || status.Semantics != "process_local_collection_health_not_subnet_safety" {
 		t.Fatalf("wrong MCP collection status: %s", b)
 	}
 }

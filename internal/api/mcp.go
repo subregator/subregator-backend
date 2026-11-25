@@ -54,7 +54,7 @@ func (s *service) mcpHandler() http.Handler {
 		r, e := s.resources(ctx, values(in))
 		return nil, r, e
 	})
-	mcp.AddTool(server, tool("inspect_network", "Read cached BGP scope, RIS visibility, per-origin RPKI explanations, optional IRR consistency, source abuse observations and registry observations; proposed ASN validation is separate from observed origins; never start or refresh external checks"), func(ctx context.Context, _ *mcp.CallToolRequest, in intelligence.Query) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, tool("inspect_network", "Read cached BGP scope, RIS visibility, per-origin RPKI explanations, optional IRR consistency, source abuse observations, optional separate Spamhaus SBL/XBL/PBL IP findings and registry observations; proposed ASN validation is separate from observed origins; never start or refresh external checks"), func(ctx context.Context, _ *mcp.CallToolRequest, in intelligence.Query) (*mcp.CallToolResult, any, error) {
 		r, e := s.inspect(ctx, in)
 		return nil, r, e
 	})

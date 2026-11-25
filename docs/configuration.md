@@ -65,3 +65,7 @@ SUBREGATOR_LOADTEST=1 go test ./internal/api -run '^TestLocalLoad$' -v -count=1 
 ```
 
 Integration tests use isolated randomly named PostgreSQL schemas and clean up only those schemas. `make check` requires `TEST_DATABASE_URL`; direct `go test` skips database integration tests when it is unset. CI always provides a real PostgreSQL service. The opt-in load test creates 10000 synthetic offers and 50000 history events, binds a temporary loopback HTTP listener, uses the configured PostgreSQL test server and calls no external providers. It exercises sorted search, history (including prefix filters), known resources and MCP at 1/8/32/128 concurrent clients. Output includes HTTP status counts and latency percentiles; successful-response latency is reported separately from fast overload rejections. The normal test suite skips this hardware-dependent run.
+
+### Optional Spamhaus ZEN
+
+`SUBREGATOR_SPAMHAUS=false` / `-spamhaus=false` keeps the licensed HTTPS source off. After product/quota/public-use approval, set `SUBREGATOR_SPAMHAUS_KEY` in the environment and enable the flag. A key alone does not enable collection. No key flag is provided. This product is distinct from DQS DNS/SIA. One first-address sample per prefix always has partial subnet coverage except single-host prefixes. See [blocklist contract and access gate](blocklists.md).

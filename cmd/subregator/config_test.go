@@ -172,3 +172,26 @@ func TestAbuseIPDBConfigurationGateAndKeyPrivacy(t *testing.T) {
 		t.Fatal("invalid key exposed or accepted")
 	}
 }
+
+func TestSpamhausConfigurationAndKeyPrivacy(t *testing.T) {
+	c, err := loadConfig(nil, envMap(nil), io.Discard)
+	if err != nil || c.Spamhaus || c.SpamhausKey != "" {
+		t.Fatal(c.Spamhaus, err)
+	}
+	values := map[string]string{"SUBREGATOR_SPAMHAUS": "true", "SUBREGATOR_SPAMHAUS_KEY": "fixture-private-key"}
+	c, err = loadConfig(nil, envMap(values), io.Discard)
+	if err != nil || !c.Spamhaus || c.SpamhausKey != "fixture-private-key" {
+		t.Fatal("gate/key not loaded", err)
+	}
+	c, err = loadConfig([]string{"-spamhaus=false"}, envMap(values), io.Discard)
+	if err != nil || c.Spamhaus {
+		t.Fatal("flag override failed", err)
+	}
+	for _, value := range []string{"fixture-private\nkey", " fixture-private-key", strings.Repeat("x", 1025)} {
+		values["SUBREGATOR_SPAMHAUS_KEY"] = value
+		_, err = loadConfig(nil, envMap(values), io.Discard)
+		if err == nil || strings.Contains(err.Error(), value) {
+			t.Fatal("key validation leak")
+		}
+	}
+}

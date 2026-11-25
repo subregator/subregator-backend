@@ -841,7 +841,7 @@
     "/api/v1/network": {
       "get": {
         "summary": "Inspect a public IP, subnet or ASN using free public sources",
-        "description": "Read stored observations only. This endpoint never runs or refreshes external checks. Checks without a cached observation remain pending; automatic checks cover published catalogue prefixes. Historical parameter combinations and standalone IP/ASN queries may have no stored observation. BGP and RPKI include normalized explanations. RPKI findings distinguish observed origins from a proposed ASN, individual invalid ASN/length and partial coverage. No unknown, stale or partial finding establishes a passing result. Optional irr exposes source-scoped IRR consistency. It returns not_configured by default and not_applicable for unsupported query scope (IPv4 shorter than /9, IPv6 shorter than /29, IP or ASN). Cached public reads never enable collection. Optional abuse returns cached AbuseIPDB summaries only after an approved account/key and display/retention gate is configured. It supports current IPv4 /24-/31 or IPv6 /120-/127 with a fixed 30-day window and at most 256 addresses; single-host, broader, historical, version and proposed-ASN combinations are not applicable. plan_limited distinguishes account entitlement errors from missing reports.",
+        "description": "Read stored observations only. This endpoint never runs or refreshes external checks. Checks without a cached observation remain pending; automatic checks cover published catalogue prefixes. Historical parameter combinations and standalone IP/ASN queries may have no stored observation. BGP and RPKI include normalized explanations. RPKI findings distinguish observed origins from a proposed ASN, individual invalid ASN/length and partial coverage. No unknown, stale or partial finding establishes a passing result. Optional irr exposes source-scoped IRR consistency. It returns not_configured by default and not_applicable for unsupported query scope (IPv4 shorter than /9, IPv6 shorter than /29, IP or ASN). Cached public reads never enable collection. Optional abuse returns cached AbuseIPDB summaries only after an approved account/key and display/retention gate is configured. It supports current IPv4 /24-/31 or IPv6 /120-/127 with a fixed 30-day window and at most 256 addresses; single-host, broader, historical, version and proposed-ASN combinations are not applicable. plan_limited distinguishes account entitlement errors from missing reports. Optional spamhaus_zen returns independent SBL/XBL/PBL findings for one queried IP. For a prefix, only its first address is queried, with explicit partial coverage except single-host prefixes. PBL is outbound mail policy. A negative sample never establishes whole-prefix absence or safety. Licensed HTTPS product access and display/retention rights are required; off by default. access_denied distinguishes source authorization failures. DROP remains a separate complete overlap check.",
         "parameters": [
           {
             "name": "resource",
@@ -2099,7 +2099,8 @@
               "unavailable",
               "rate_limited",
               "no_data",
-              "plan_limited"
+              "plan_limited",
+              "access_denied"
             ]
           },
           "source": {
@@ -2166,6 +2167,9 @@
           },
           "abuse": {
             "$ref": "#/components/schemas/AbuseObservation"
+          },
+          "blocklists": {
+            "$ref": "#/components/schemas/BlocklistObservation"
           }
         },
         "required": [
@@ -2348,6 +2352,9 @@
           },
           "abuse": {
             "$ref": "#/components/schemas/AbuseObservation"
+          },
+          "blocklists": {
+            "$ref": "#/components/schemas/BlocklistObservation"
           }
         },
         "required": [
@@ -2383,6 +2390,9 @@
             "$ref": "#/components/schemas/OfferCheck"
           },
           "abuse": {
+            "$ref": "#/components/schemas/OfferCheck"
+          },
+          "zen": {
             "$ref": "#/components/schemas/OfferCheck"
           }
         },
@@ -2462,7 +2472,8 @@
               "no_data",
               "rate_limited",
               "unknown",
-              "plan_limited"
+              "plan_limited",
+              "access_denied"
             ]
           },
           "freshness": {
@@ -3563,6 +3574,114 @@
         ],
         "additionalProperties": false,
         "description": "Optional, default-off IPv4 /24-/31 and IPv6 /120-/127 check-block summary with at most 256 addresses. Query window bounds are local request bounds, not an exact source clock. Counts and latest known timestamp are derived only from retained source summaries. Subset ranges, missing/invalid timestamps, duplicates, continuation and truncation are partial; counts are lower bounds. Zero reports does not prove cleanliness. Aging out is not resolution. Past reports are not attributed to a current tenant. No raw complaint text, reporter identity, categories or additional per-IP detail requests are included."
+      },
+      "ListFinding": {
+        "type": "object",
+        "properties": {
+          "list": {
+            "type": "string",
+            "enum": [
+              "SBL",
+              "XBL",
+              "PBL"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "listed",
+              "not_listed"
+            ]
+          },
+          "codes": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "integer",
+              "enum": [
+                1002,
+                1003,
+                1004,
+                1009,
+                1010,
+                1011
+              ]
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "list",
+          "status",
+          "codes",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "BlocklistObservation": {
+        "type": "object",
+        "properties": {
+          "requested": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string",
+            "description": "The single queried IPv4/IPv6 address; never a claimed listing range."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "listed",
+              "not_listed",
+              "partial"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ]
+          },
+          "scope_relation": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "contained"
+            ]
+          },
+          "selection": {
+            "type": "string",
+            "enum": [
+              "requested_address",
+              "prefix_first_address"
+            ]
+          },
+          "findings": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/ListFinding"
+            }
+          },
+          "semantics": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "requested",
+          "address",
+          "status",
+          "completeness",
+          "scope_relation",
+          "selection",
+          "findings",
+          "semantics"
+        ],
+        "additionalProperties": false
       }
     }
   }

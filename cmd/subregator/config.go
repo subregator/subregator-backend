@@ -13,6 +13,8 @@ import (
 )
 
 type config struct {
+	Spamhaus        bool
+	SpamhausKey     string
 	AbuseIPDB       bool
 	AbuseIPDBKey    string
 	IRR             bool
@@ -43,6 +45,7 @@ func loadConfig(args []string, getenv func(string) string, output io.Writer) (co
 	fs.SetOutput(output)
 	fs.StringVar(&c.Addr, "addr", env("ADDR", "127.0.0.1:8080"), "HTTP listen address (SUBREGATOR_ADDR)")
 	c.DatabaseURL = env("DATABASE_URL", "postgresql://subregator@127.0.0.1:5432/subregator?sslmode=disable")
+	spamhaus := fs.String("spamhaus", env("SPAMHAUS", "false"), "Enable licensed Spamhaus HTTPS queries after quota and data-use approval (SUBREGATOR_SPAMHAUS)")
 	abuse := fs.String("abuseipdb", env("ABUSEIPDB", "false"), "Enable AbuseIPDB only after account, quota and data-use approval (SUBREGATOR_ABUSEIPDB)")
 	irr := fs.String("irr", env("IRR", "false"), "Enable IRRexplorer collection only after confirming source quotas and publication/retention rights (SUBREGATOR_IRR)")
 	requestsRPS := fs.String("requests-rps", env("REQUESTS_RPS", "100"), "Global HTTP requests per second and burst (SUBREGATOR_REQUESTS_RPS)")
@@ -60,6 +63,15 @@ func loadConfig(args []string, getenv func(string) string, output io.Writer) (co
 	}
 	if fs.NArg() != 0 {
 		return c, errors.New("unexpected positional arguments")
+	}
+	var spamhausError error
+	c.Spamhaus, spamhausError = strconv.ParseBool(*spamhaus)
+	if spamhausError != nil {
+		return c, errors.New("invalid SUBREGATOR_SPAMHAUS/spamhaus value")
+	}
+	c.SpamhausKey = getenv("SUBREGATOR_SPAMHAUS_KEY")
+	if len(c.SpamhausKey) > 1024 || strings.TrimSpace(c.SpamhausKey) != c.SpamhausKey || strings.ContainsAny(c.SpamhausKey, "\r\n") {
+		return c, errors.New("invalid Spamhaus key format")
 	}
 	var abuseError error
 	c.AbuseIPDB, abuseError = strconv.ParseBool(*abuse)
