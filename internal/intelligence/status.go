@@ -3,6 +3,7 @@ package intelligence
 import (
 	"net/url"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/subregator/subregator-backend/internal/catalog"
@@ -19,14 +20,20 @@ type UpstreamStats struct {
 }
 
 type CheckCoverage struct {
-	Name             string         `json:"name"`
-	Source           string         `json:"source"`
-	Collection       map[string]int `json:"collection"`
-	Freshness        map[string]int `json:"freshness"`
-	OldestAgeSeconds *float64       `json:"oldest_age_seconds"`
+	DuePrefixes        int            `json:"due_prefixes"`
+	SuppressedPrefixes int            `json:"suppressed_prefixes"`
+	Running            int            `json:"running"`
+	Name               string         `json:"name"`
+	Source             string         `json:"source"`
+	Collection         map[string]int `json:"collection"`
+	Freshness          map[string]int `json:"freshness"`
+	OldestAgeSeconds   *float64       `json:"oldest_age_seconds"`
 }
 
 type CollectionStatus struct {
+	SchedulerPolicy            string          `json:"scheduler_policy"`
+	DueJobs                    int             `json:"due_jobs"`
+	RunningJobs                int             `json:"running_jobs"`
 	GeneratedAt                time.Time       `json:"generated_at"`
 	ProcessStartedAt           time.Time       `json:"process_started_at"`
 	EligiblePrefixes           int             `json:"eligible_prefixes"`
@@ -49,7 +56,7 @@ func upstreamName(raw string) string {
 	if err != nil {
 		return "other"
 	}
-	switch u.Hostname() {
+	switch strings.ToLower(u.Hostname()) {
 	case "stat.ripe.net":
 		return "RIPEstat"
 	case "data.iana.org":
@@ -87,6 +94,12 @@ func (s *Service) recordRequest(raw string, status int, err error, elapsed time.
 		r.NoData++
 	}
 	s.stats[name] = r
+	s.notifyBudget()
+}
+
+func (s *Service) notifyBudget() {
+	close(s.budgetChanged)
+	s.budgetChanged = make(chan struct{})
 }
 
 func (s *Service) persistenceFailed() {
@@ -117,7 +130,7 @@ func publishedPrefixes(store *catalog.Store) map[string]bool {
 func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 	now := time.Now().UTC()
 	active := publishedPrefixes(store)
-	out := CollectionStatus{GeneratedAt: now, EligiblePrefixes: len(active), Checks: []CheckCoverage{}, Upstreams: []UpstreamStats{}, Semantics: "process_local_collection_health_not_subnet_safety"}
+	out := CollectionStatus{GeneratedAt: now, EligiblePrefixes: len(active), Checks: []CheckCoverage{}, Upstreams: []UpstreamStats{}, SchedulerPolicy: "per_check_ttl", Semantics: "process_local_collection_health_not_subnet_safety"}
 	names := []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "spamhaus_drop"}
 	a.mu.RLock()
 	for key := range active {
@@ -125,7 +138,7 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 		if !scheduled {
 			out.UnscheduledPrefixes++
 		}
-		if !scheduled || !now.Before(due) {
+		if !scheduled || !due.IsZero() && !now.Before(due) {
 			out.DuePrefixes++
 			if scheduled {
 				age := now.Sub(due).Seconds()
@@ -141,6 +154,18 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 			c.Source = "Spamhaus DROP"
 		}
 		for key := range active {
+			if job, found := a.jobs[key][name]; found {
+				if job.Next.IsZero() {
+					c.SuppressedPrefixes++
+				} else if !job.Next.After(now) {
+					c.DuePrefixes++
+					out.DueJobs++
+				}
+				if job.Running {
+					c.Running++
+					out.RunningJobs++
+				}
+			}
 			o := observation("pending", nil, nil, now)
 			var observed *time.Time
 			if report, ok := a.reports[key]; ok {
@@ -168,7 +193,7 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 					observed = m.ObservedAt
 				}
 			}
-			if o.CollectionStatus == "pending" && !a.service.network {
+			if observed == nil && (o.CollectionStatus == "pending" || o.CollectionStatus == "failed") && !a.service.network {
 				o.CollectionStatus = "disabled"
 			}
 			c.Collection[o.CollectionStatus]++
@@ -193,6 +218,5 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 	}
 	s.mu.Unlock()
 	sort.Slice(out.Upstreams, func(i, j int) bool { return out.Upstreams[i].Source < out.Upstreams[j].Source })
-	out.SchedulerSweepFloorSeconds = float64(len(active)) * max(0.1, 600/float64(s.rpm))
 	return out
 }

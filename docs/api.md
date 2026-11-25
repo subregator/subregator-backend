@@ -58,7 +58,7 @@ PostgreSQL stores networks as `cidr` with a GiST index; durable JSON payloads re
 
 ## Automatic offer checks
 
-The Go backend continuously checks each distinct published public prefix, shared across providers. The default inspection collects prefix overview, routing status, RPKI, registration and authoritative RDAP. A single background worker rotates fairly through active prefixes, reuses per-source TTLs and duplicate-request suppression, and paces work against `SUBREGATOR_CHECKS_RPM`. Withheld prefixes are never inferred or submitted to sources. Removed prefixes leave the live result map.
+The Go backend continuously checks each distinct published public prefix, shared across providers. The default inspection collects prefix overview, routing status, RPKI, registration and authoritative RDAP. A single ingestion process runs bounded per-check queues, reuses source TTLs and duplicate-request suppression, and shares `SUBREGATOR_CHECKS_RPM` across actual requests. Withheld prefixes are never inferred or submitted to sources. Removed prefixes leave the live result map.
 
 Offer list and detail responses include `checks`: exact-prefix BGP visibility, all-observed-origin RPKI validation, and overlap with the complete Spamhaus DROP IPv4 or IPv6 dataset. Results are read from memory, with no upstream calls or database reads on the offer request path. Each result exposes its own status, freshness, timestamps, source and coverage. New prefixes are explicitly pending until collected; expired observations become stale immediately. Source failures never establish a passing result. RPKI and DROP are source-scoped risk signals, not a universal reputation score or safety guarantee.
 
@@ -69,6 +69,11 @@ Reports and metric observations survive restart through the bounded PostgreSQL c
 Collection throughput is bounded by source quotas, independently of fast catalogue reads. A large cold catalogue needs time to populate; the five-minute routing TTL can exceed the refresh capacity at the default 120 requests/minute. Measure source coverage and freshness before increasing budgets or adding sources. There is one scheduler per process; the existing database writer lease enforces a single ingestion process.
 
 ## Cached network observations
+
+
+Every metric and embedded offer check includes an additive `observation` envelope that separates collection status, freshness, completeness and typed scope from the existing finding. See the [observation contract](check-results.md) for states, examples and compatibility. `/api/v1/network/checks` reports which metric definitions are collected automatically; other definitions do not imply scheduled collection.
+
+`GET /api/v1/network/status` and MCP `network_status` return aggregate process-local coverage for the six automatic checks, observation age, due/unscheduled prefixes and jobs, running/suppressed work, scheduling lag, source request counts/duration/failures, budget waits/denials and persistence failures. Reads call no upstream source or database and return no prefix IDs or credential-bearing URLs. Counters reset on restart; metadata-only coverage is rebuilt as the worker restores/recollects observations. A missing collector returns 503. `scheduler_policy` is `per_check_ttl`; the legacy sweep-floor field is deprecated and zero because artificial prefix pacing was removed. See [scheduling rules](scheduling.md), the [capacity report](collection-capacity.md) and [source-access inventory](source-access.md).
 
 ```sh
 curl 'http://localhost:8080/api/v1/network/checks'
@@ -91,7 +96,7 @@ Sources: [RIPEstat API](https://stat.ripe.net/docs/data-api/ripestat-data-api), 
 
 The `/mcp` endpoint implements Streamable HTTP using the official Go SDK. It is stateless, uses SSE responses, negotiates the protocol and requires no sticky sessions. It exposes the same service operations and validation as REST:
 
-`search_offers`, `get_offer`, `list_providers`, `get_listing`, `listing_history`, `known_resources`, `inspect_network`, `network_checks`, `get_api_schema`.
+`search_offers`, `get_offer`, `list_providers`, `get_listing`, `listing_history`, `known_resources`, `inspect_network`, `network_checks`, `network_status`, `get_api_schema`.
 
 Filter tools accept a `filters` object containing the normal REST parameter names and values. Cached network observation lookup accepts resource, checks, start_time, end_time, version and asn; it never triggers external work. Results use structured content, with protocol-standard tool errors for invalid operations. Browser clients must use the allowed origin; JSON-RPC bodies are limited to 1 MiB.
 
@@ -112,9 +117,3 @@ The public API is read-only and does not provide administrative feed imports or 
 ## Scope
 
 This release remains a single-writer catalogue and history service. There is no account system, checkout, purchase automation, currency conversion or distributed scheduler. Current listing queries stay in memory; PostgreSQL stores durable observations and a bounded external-result cache. Multiple ingestion writers or independent API replicas require coordinated scheduling and cache refresh before enabling them; sharing PostgreSQL alone does not synchronize each process's in-memory catalogue.
-
-## Network observation metadata and collection status
-
-Every network metric and embedded offer check includes an additive `observation` envelope with collection status, freshness, completeness and typed scope. See the [observation contract](check-results.md) and [source-access inventory](source-access.md). Older cached results acquire the envelope locally on read.
-
-`GET /api/v1/network/status` and MCP `network_status` expose process-local aggregate check coverage, observation age, scheduling lag, source request counts and durations, budget waits and persistence failures. Reads use in-memory metadata without upstream requests or per-prefix identifiers. Counters reset on restart; a missing collector returns 503.

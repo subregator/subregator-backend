@@ -2145,6 +2145,11 @@
           "source_updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "retry_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Earliest retry allowed by a persisted source Retry-After response, if known."
           }
         },
         "required": [
@@ -2484,6 +2489,18 @@
               "null"
             ],
             "minimum": 0
+          },
+          "due_prefixes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "suppressed_prefixes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "running": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
@@ -2491,7 +2508,10 @@
           "source",
           "collection",
           "freshness",
-          "oldest_age_seconds"
+          "oldest_age_seconds",
+          "due_prefixes",
+          "suppressed_prefixes",
+          "running"
         ],
         "additionalProperties": false
       },
@@ -2601,10 +2621,26 @@
           },
           "scheduler_sweep_floor_seconds": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "deprecated": true,
+            "description": "Retained for compatibility and zero with per_check_ttl scheduling: there is no artificial prefix-sweep pacing floor. Use due/running jobs and measured ages; zero is not a freshness guarantee."
           },
           "semantics": {
             "type": "string"
+          },
+          "due_jobs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "running_jobs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "scheduler_policy": {
+            "type": "string",
+            "enum": [
+              "per_check_ttl"
+            ]
           }
         },
         "required": [
@@ -2622,10 +2658,13 @@
           "budget_wait_seconds",
           "persistence_failures",
           "scheduler_sweep_floor_seconds",
-          "semantics"
+          "semantics",
+          "due_jobs",
+          "running_jobs",
+          "scheduler_policy"
         ],
         "additionalProperties": false,
-        "description": "Process-local collection health. Counters reset on restart; coverage starts pending until restored/recollected. Scheduler floor ignores upstream latency, budget waits and shared quotas; it is not a freshness promise. No resource IDs, tokens or upstream URL labels are returned."
+        "description": "Process-local collection health for per-check TTL scheduling. Source Retry-After and DROP reservations survive cache eviction in separate storage. Counters reset on restart; no prefixes, credentials or arbitrary upstream URLs are returned."
       }
     }
   }

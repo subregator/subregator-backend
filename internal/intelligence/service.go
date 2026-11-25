@@ -57,6 +57,7 @@ func Capabilities() []Definition {
 }
 
 type Metric struct {
+	RetryAt         *time.Time      `json:"retry_at,omitempty"`
 	SourceUpdatedAt *time.Time      `json:"source_updated_at,omitempty"`
 	Observation     Observation     `json:"observation"`
 	Name            string          `json:"name"`
@@ -98,6 +99,10 @@ type Service struct {
 	budgetWaits         uint64
 	budgetWaitDuration  time.Duration
 	persistenceFailures uint64
+	limits              map[string]*sourceLimit
+	budgetChanged       chan struct{}
+	budgetQueue         []uint64
+	budgetTicket        uint64
 }
 
 var ErrNoData = errors.New("no observation in source coverage")
@@ -108,7 +113,7 @@ func New(cache Cache, network bool, freeToken string, rpm int) *Service {
 		rpm = 120
 	}
 	client := &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("upstream redirect refused") }}
-	return &Service{cache: cache, client: client, network: network, token: freeToken, rpm: rpm, flights: map[string]*call{}, httpSlots: make(chan struct{}, 4), inspectSlots: make(chan struct{}, 4), stats: map[string]UpstreamStats{}, startedAt: time.Now().UTC()}
+	return &Service{cache: cache, client: client, network: network, token: freeToken, rpm: rpm, flights: map[string]*call{}, httpSlots: make(chan struct{}, 4), inspectSlots: make(chan struct{}, 4), stats: map[string]UpstreamStats{}, startedAt: time.Now().UTC(), limits: map[string]*sourceLimit{}, budgetChanged: make(chan struct{})}
 }
 func (s *Service) Inspect(ctx context.Context, q Query) (Report, error) {
 	target, e := q.validate()
@@ -197,16 +202,21 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 	} else {
 		result = s.fetchMetric(ctx, target, q, m)
 		ttl := time.Duration(d.TTLSeconds) * time.Second
-		if result.Status != "ok" {
+		if result.Status != "ok" && result.Status != "no_data" {
 			ttl = 15 * time.Second
 			if result.Status != "no_data" && (previous.Status == "ok" || previous.Status == "stale") {
+				retry := result.RetryAt
 				result = previous
+				result.RetryAt = retry
 				result.Status = "stale"
 				result.Cached = true
 				result.Error = "Refresh failed; retained source observation"
 			}
 		}
 		expires := time.Now().UTC().Add(ttl)
+		if result.RetryAt != nil && result.RetryAt.After(expires) {
+			expires = *result.RetryAt
+		}
 		result.ExpiresAt = &expires
 		if s.cache != nil && ctx.Err() == nil {
 			if b, e := json.Marshal(result); e == nil {
@@ -228,7 +238,30 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 type automaticBudgetKey struct{}
 
 func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
+	automatic := ctx.Value(automaticBudgetKey{}) == true
+	var ticket uint64
+	if automatic {
+		s.mu.Lock()
+		s.budgetTicket++
+		ticket = s.budgetTicket
+		s.budgetQueue = append(s.budgetQueue, ticket)
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			for i, queued := range s.budgetQueue {
+				if queued == ticket {
+					s.budgetQueue = append(s.budgetQueue[:i], s.budgetQueue[i+1:]...)
+					break
+				}
+			}
+			s.notifyBudget()
+			s.mu.Unlock()
+		}()
+	}
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		select {
 		case s.httpSlots <- struct{}{}:
 		case <-ctx.Done():
@@ -236,19 +269,33 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		}
 		s.mu.Lock()
 		now := time.Now()
+		if raw, ok := ctx.Value(sourceBudgetKey{}).(string); ok {
+			if limit := s.limits[sourceLimitKey(raw)]; limit != nil {
+				if deadline := limit.deadline.Load(); deadline != nil && deadline.After(now) {
+					s.mu.Unlock()
+					<-s.httpSlots
+					return nil, &sourceLimited{Until: *deadline}
+				}
+			}
+		}
 		if s.window.IsZero() || now.Sub(s.window) >= time.Minute {
 			s.window = now
 			s.used = 0
 		}
-		if s.used < s.rpm {
+		turn := !automatic || len(s.budgetQueue) > 0 && s.budgetQueue[0] == ticket
+		if s.used < s.rpm && turn {
 			s.used++
 			s.mu.Unlock()
 			return func() { <-s.httpSlots }, nil
 		}
 		wait := time.Until(s.window.Add(time.Minute))
+		if !turn && s.used < s.rpm {
+			wait = time.Minute
+		}
+		changed := s.budgetChanged
 		s.mu.Unlock()
 		<-s.httpSlots
-		if ctx.Value(automaticBudgetKey{}) != true {
+		if !automatic {
 			s.mu.Lock()
 			s.budgetDenials++
 			s.mu.Unlock()
@@ -263,11 +310,18 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 			return nil, ctx.Err()
 		case <-timer.C:
 			s.recordBudgetWait(time.Since(started))
+		case <-changed:
+			timer.Stop()
+			s.recordBudgetWait(time.Since(started))
 		}
 	}
 }
 
 func (s *Service) request(ctx context.Context, rawURL, auth string) (json.RawMessage, error) {
+	if err := s.checkSourceLimit(ctx, rawURL); err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, sourceBudgetKey{}, rawURL)
 	release, e := s.acquireRequest(ctx)
 	if e != nil {
 		return nil, e
@@ -277,6 +331,9 @@ func (s *Service) request(ctx context.Context, rawURL, auth string) (json.RawMes
 }
 
 func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes int, requireJSON bool) (data json.RawMessage, err error) {
+	if err := s.checkSourceLimit(ctx, rawURL); err != nil {
+		return nil, err
+	}
 	started := time.Now()
 	status := 0
 	defer func() { s.recordRequest(rawURL, status, err, time.Since(started)) }()
@@ -299,7 +356,7 @@ func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes 
 		return nil, ErrNoData
 	}
 	if response.StatusCode == 429 {
-		return nil, ErrBusy
+		return nil, &sourceLimited{Until: s.deferSource(ctx, rawURL, response.Header.Get("Retry-After"))}
 	}
 	if response.StatusCode != 200 {
 		return nil, errors.New("upstream unavailable")
@@ -399,6 +456,10 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 			m.Status = "rate_limited"
 			m.Error = "Upstream request budget reached; retry later"
 		}
+		var limited *sourceLimited
+		if errors.As(e, &limited) {
+			m.RetryAt = &limited.Until
+		}
 		return m
 	}
 	m.Status = "ok"
@@ -430,6 +491,9 @@ func (s *Service) origins(ctx context.Context, target Target, q Query) (string, 
 			case "no_data":
 				return "", nil, ErrNoData
 			case "rate_limited":
+				if m.RetryAt != nil {
+					return "", nil, &sourceLimited{Until: *m.RetryAt}
+				}
 				return "", nil, ErrBusy
 			default:
 				return "", nil, errors.New("origin observation unavailable")

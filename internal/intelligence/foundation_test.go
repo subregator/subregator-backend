@@ -179,7 +179,7 @@ func TestCollectionStatusConcurrentAndUpstreamCounters(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	for _, path := range []string{"/auth", "/quota", "/missing", "/ok"} {
+	for _, path := range []string{"/auth", "/missing", "/ok", "/quota"} {
 		s.readSource(context.Background(), "https://stat.ripe.net"+path+"?token=private", "private", 1024, true)
 	}
 	s.persistenceFailed()

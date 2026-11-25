@@ -65,3 +65,33 @@ func TestDROPReservationSurvivesLegacyCacheEviction(t *testing.T) {
 		t.Fatalf("rollback lost reservation: %s %v %v %v", got, expiry, found, err)
 	}
 }
+
+func TestSourceLimitSurvivesCacheEviction(t *testing.T) {
+	d, _ := setup(t)
+	ctx := context.Background()
+	until := time.Now().Add(time.Hour).UTC().Truncate(time.Millisecond)
+	payload, _ := json.Marshal(map[string]any{"until": until})
+	if err := d.CachePut(ctx, "source_limit:RIPEstat", payload, until); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.sql.ExecContext(ctx, `INSERT INTO check_cache(key,payload,expires_at,touched_at) SELECT 'source-fixture:'||n,'{}'::bytea,0,$1 FROM generate_series(1,2001) n`, time.Now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.CachePut(ctx, "evict-source-fixture", json.RawMessage(`{}`), until); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	b, expiry, found, err := d.CacheGet(ctx, "source_limit:RIPEstat")
+	if err != nil || !found || string(b) != string(payload) || !expiry.Equal(until) {
+		t.Fatalf("source quota reservation lost: %s %v %v", b, found, err)
+	}
+	if err := d.CachePut(ctx, "source_limit:RIPEstat", json.RawMessage(`{}`), until.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	b, _, _, _ = d.CacheGet(ctx, "source_limit:RIPEstat")
+	if string(b) != string(payload) {
+		t.Fatal("a shorter reservation overwrote a later source limit")
+	}
+}
