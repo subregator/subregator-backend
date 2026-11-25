@@ -57,6 +57,8 @@ func upstreamName(raw string) string {
 		return "other"
 	}
 	switch strings.ToLower(u.Hostname()) {
+	case "api.abuseipdb.com":
+		return "AbuseIPDB"
 	case "irrexplorer.nlnog.net":
 		return "IRRexplorer"
 	case "stat.ripe.net":
@@ -133,7 +135,7 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 	now := time.Now().UTC()
 	active := publishedPrefixes(store)
 	out := CollectionStatus{GeneratedAt: now, EligiblePrefixes: len(active), Checks: []CheckCoverage{}, Upstreams: []UpstreamStats{}, SchedulerPolicy: "per_check_ttl", Semantics: "process_local_collection_health_not_subnet_safety"}
-	names := []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "spamhaus_drop", "irr"}
+	names := []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "spamhaus_drop", "irr", "abuse"}
 	a.mu.RLock()
 	for key := range active {
 		due, scheduled := a.due[key]
@@ -169,6 +171,9 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 				}
 			}
 			o := observation("pending", nil, nil, now)
+			if name == "abuse" && !a.service.abuseConfigured() {
+				o.CollectionStatus = "not_configured"
+			}
 			if name == "irr" && !a.service.irrEnabled {
 				o.CollectionStatus = "not_configured"
 			}
@@ -180,6 +185,8 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 					check = &report.BGP
 				case "rpki":
 					check = &report.RPKI
+				case "abuse":
+					check = report.Abuse
 				case "irr":
 					check = report.IRR
 				case "spamhaus_drop":

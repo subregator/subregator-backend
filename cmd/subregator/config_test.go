@@ -145,3 +145,30 @@ func TestIRRConfigurationGate(t *testing.T) {
 		t.Fatal("invalid IRR setting exposed or accepted")
 	}
 }
+
+func TestAbuseIPDBConfigurationGateAndKeyPrivacy(t *testing.T) {
+	c, err := loadConfig(nil, envMap(nil), io.Discard)
+	if err != nil || c.AbuseIPDB || c.AbuseIPDBKey != "" {
+		t.Fatal("abuse must be off by default")
+	}
+	values := map[string]string{"SUBREGATOR_ABUSEIPDB": "true", "SUBREGATOR_ABUSEIPDB_KEY": "fixture-private-key"}
+	c, err = loadConfig(nil, envMap(values), io.Discard)
+	if err != nil || !c.AbuseIPDB || c.AbuseIPDBKey != "fixture-private-key" {
+		t.Fatal("abuse environment ignored", err)
+	}
+	values["SUBREGATOR_ABUSEIPDB"] = "invalid"
+	c, err = loadConfig([]string{"-abuseipdb=false"}, envMap(values), io.Discard)
+	if err != nil || c.AbuseIPDB {
+		t.Fatal("abuse flag precedence broken", err)
+	}
+	var out bytes.Buffer
+	loadConfig([]string{"-h"}, envMap(values), &out)
+	if strings.Contains(out.String(), "fixture-private-key") {
+		t.Fatal("key exposed in help")
+	}
+	values["SUBREGATOR_ABUSEIPDB"] = "false"
+	values["SUBREGATOR_ABUSEIPDB_KEY"] = "fixture-private-key\n"
+	if _, err := loadConfig(nil, envMap(values), io.Discard); err == nil || strings.Contains(err.Error(), "fixture-private-key") {
+		t.Fatal("invalid key exposed or accepted")
+	}
+}

@@ -841,7 +841,7 @@
     "/api/v1/network": {
       "get": {
         "summary": "Inspect a public IP, subnet or ASN using free public sources",
-        "description": "Read stored observations only. This endpoint never runs or refreshes external checks. Checks without a cached observation remain pending; automatic checks cover published catalogue prefixes. Historical parameter combinations and standalone IP/ASN queries may have no stored observation. BGP and RPKI include normalized explanations. RPKI findings distinguish observed origins from a proposed ASN, individual invalid ASN/length and partial coverage. No unknown, stale or partial finding establishes a passing result. Optional irr exposes source-scoped IRR consistency. It returns not_configured by default and not_applicable for unsupported query scope (IPv4 shorter than /9, IPv6 shorter than /29, IP or ASN). Cached public reads never enable collection.",
+        "description": "Read stored observations only. This endpoint never runs or refreshes external checks. Checks without a cached observation remain pending; automatic checks cover published catalogue prefixes. Historical parameter combinations and standalone IP/ASN queries may have no stored observation. BGP and RPKI include normalized explanations. RPKI findings distinguish observed origins from a proposed ASN, individual invalid ASN/length and partial coverage. No unknown, stale or partial finding establishes a passing result. Optional irr exposes source-scoped IRR consistency. It returns not_configured by default and not_applicable for unsupported query scope (IPv4 shorter than /9, IPv6 shorter than /29, IP or ASN). Cached public reads never enable collection. Optional abuse returns cached AbuseIPDB summaries only after an approved account/key and display/retention gate is configured. It supports current IPv4 prefixes /24 or longer with a fixed 30-day window; IPv6, historical, version and proposed-ASN combinations are not applicable. plan_limited distinguishes account entitlement errors from missing reports.",
         "parameters": [
           {
             "name": "resource",
@@ -2098,7 +2098,8 @@
               "not_applicable",
               "unavailable",
               "rate_limited",
-              "no_data"
+              "no_data",
+              "plan_limited"
             ]
           },
           "source": {
@@ -2162,6 +2163,9 @@
           },
           "irr": {
             "$ref": "#/components/schemas/IRRExplanation"
+          },
+          "abuse": {
+            "$ref": "#/components/schemas/AbuseObservation"
           }
         },
         "required": [
@@ -2341,6 +2345,9 @@
           },
           "irr": {
             "$ref": "#/components/schemas/IRRExplanation"
+          },
+          "abuse": {
+            "$ref": "#/components/schemas/AbuseObservation"
           }
         },
         "required": [
@@ -2373,6 +2380,9 @@
             "type": "string"
           },
           "irr": {
+            "$ref": "#/components/schemas/OfferCheck"
+          },
+          "abuse": {
             "$ref": "#/components/schemas/OfferCheck"
           }
         },
@@ -2451,7 +2461,8 @@
               "not_applicable",
               "no_data",
               "rate_limited",
-              "unknown"
+              "unknown",
+              "plan_limited"
             ]
           },
           "freshness": {
@@ -3404,6 +3415,154 @@
         ],
         "additionalProperties": false,
         "description": "IRRexplorer route objects compared with separately dated RIS origins. Source scoped, not ownership or universal routing acceptance. Duplicates and conflicts across registries are preserved; containing or contained routes never satisfy an exact-prefix origin. Unknown, stale or partial data never establishes a passing comparison. No raw RPSL or source score is published. Collection is off until source quotas and display/retention rights are configured."
+      },
+      "ReportedAddress": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "reports": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "latest_report_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "address",
+          "reports"
+        ],
+        "additionalProperties": false,
+        "description": "A source-reported IP summary, not a raw complaint. source_confidence is AbuseIPDB's assertion, not a subnet score or a finding about the current tenant. Missing report timestamps remain missing."
+      },
+      "AbuseObservation": {
+        "type": "object",
+        "properties": {
+          "prefix": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "reports_observed",
+              "no_reports_in_window",
+              "partial"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ]
+          },
+          "scope_relation": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "contained"
+            ]
+          },
+          "range_start": {
+            "type": "string"
+          },
+          "range_end": {
+            "type": "string"
+          },
+          "possible_hosts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "window_days": {
+            "type": "integer",
+            "const": 30
+          },
+          "window_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "window_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "window_basis": {
+            "type": "string",
+            "const": "local_request_bounds"
+          },
+          "ingested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reported_ip_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "report_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "latest_report_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "counts_are_lower_bounds": {
+            "type": "boolean"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "address_limit": {
+            "type": "integer",
+            "const": 256
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportedAddress"
+            },
+            "maxItems": 256
+          },
+          "details_coverage": {
+            "type": "string",
+            "const": "not_collected"
+          },
+          "semantics": {
+            "type": "string",
+            "const": "source_reports_not_cleanliness_tenant_attribution_or_resolution"
+          }
+        },
+        "required": [
+          "prefix",
+          "status",
+          "completeness",
+          "scope_relation",
+          "range_start",
+          "range_end",
+          "possible_hosts",
+          "window_days",
+          "window_start",
+          "window_end",
+          "window_basis",
+          "ingested_at",
+          "reported_ip_count",
+          "report_count",
+          "counts_are_lower_bounds",
+          "truncated",
+          "address_limit",
+          "addresses",
+          "details_coverage",
+          "semantics"
+        ],
+        "additionalProperties": false,
+        "description": "Optional, default-off IPv4 /24-or-longer check-block summary. Query window bounds are local request bounds, not an exact source clock. Counts and latest known timestamp are derived only from retained source summaries. Subset ranges, missing/invalid timestamps, duplicates, continuation and truncation are partial; counts are lower bounds. Zero reports does not prove cleanliness. Aging out is not resolution. Past reports are not attributed to a current tenant. No raw complaint text, reporter identity, categories or additional per-IP detail requests are included."
       }
     }
   }

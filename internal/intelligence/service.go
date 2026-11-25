@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,7 @@ type Definition struct {
 }
 
 var definitions = map[string]Definition{
+	"abuse":                {Name: "abuse", Source: "AbuseIPDB", Description: "Optional source report summaries for IPv4 /24 or longer, 30-day window; off until account and data use are approved", Coverage: "Source-reported addresses in the returned search range; not cleanliness, tenant attribution or resolution", TTLSeconds: 86400, Kinds: []string{"prefix"}},
 	"irr":                  {Name: "irr", Source: "IRRexplorer", Description: "IRR route/route6 objects compared with observed BGP origins; optional and off until source access is approved", Coverage: "IRRexplorer mirrored registries; not ownership or universal routing acceptance", TTLSeconds: 3600, Kinds: []string{"prefix"}},
 	"asn_rank":             {Name: "asn_rank", Source: "CAIDA ASRank", Description: "Free customer-cone topology ranking of origin ASNs", Coverage: "ASN topology rank, not subnet reputation, traffic or packet reachability", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
 	"prefix_overview":      {Name: "prefix_overview", Source: "RIPEstat", Description: "Announced prefix and origin ASNs", Coverage: "RIS collector observations; not a packet reachability test", TTLSeconds: 300, Kinds: []string{"ip", "prefix"}},
@@ -58,23 +60,24 @@ func Capabilities() []Definition {
 }
 
 type Metric struct {
-	IRR             *IRRExplanation  `json:"irr,omitempty"`
-	BGP             *BGPExplanation  `json:"bgp,omitempty"`
-	RPKI            *RPKIExplanation `json:"rpki,omitempty"`
-	Registration    *Registration    `json:"registration,omitempty"`
-	RetryAt         *time.Time       `json:"retry_at,omitempty"`
-	SourceUpdatedAt *time.Time       `json:"source_updated_at,omitempty"`
-	Observation     Observation      `json:"observation"`
-	Name            string           `json:"name"`
-	Status          string           `json:"status"`
-	Source          string           `json:"source"`
-	SourceURL       string           `json:"source_url,omitempty"`
-	Coverage        string           `json:"coverage"`
-	ObservedAt      *time.Time       `json:"observed_at"`
-	ExpiresAt       *time.Time       `json:"expires_at"`
-	Cached          bool             `json:"cached"`
-	Error           string           `json:"error,omitempty"`
-	Data            json.RawMessage  `json:"data"`
+	Abuse           *AbuseObservation `json:"abuse,omitempty"`
+	IRR             *IRRExplanation   `json:"irr,omitempty"`
+	BGP             *BGPExplanation   `json:"bgp,omitempty"`
+	RPKI            *RPKIExplanation  `json:"rpki,omitempty"`
+	Registration    *Registration     `json:"registration,omitempty"`
+	RetryAt         *time.Time        `json:"retry_at,omitempty"`
+	SourceUpdatedAt *time.Time        `json:"source_updated_at,omitempty"`
+	Observation     Observation       `json:"observation"`
+	Name            string            `json:"name"`
+	Status          string            `json:"status"`
+	Source          string            `json:"source"`
+	SourceURL       string            `json:"source_url,omitempty"`
+	Coverage        string            `json:"coverage"`
+	ObservedAt      *time.Time        `json:"observed_at"`
+	ExpiresAt       *time.Time        `json:"expires_at"`
+	Cached          bool              `json:"cached"`
+	Error           string            `json:"error,omitempty"`
+	Data            json.RawMessage   `json:"data"`
 }
 type Report struct {
 	Resource  Target   `json:"resource"`
@@ -87,6 +90,8 @@ type call struct {
 	result Metric
 }
 type Service struct {
+	abuseEnabled        bool
+	abuseKey            string
 	irrEnabled          bool
 	cache               Cache
 	client              *http.Client
@@ -157,6 +162,7 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 		out = decorateRegistration(out, target)
 		out = decorateRouting(out, target, q.ASN)
 		out = decorateIRR(out, target, time.Now())
+		out = decorateAbuse(out, target, time.Now())
 		if out.IRR != nil {
 			var overview Metric
 			if q.overview != nil {
@@ -238,7 +244,10 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 		}
 		if result.Status != "ok" && result.Status != "no_data" {
 			ttl = 15 * time.Second
-			if result.Status != "no_data" && (previous.Status == "ok" || previous.Status == "stale") {
+			if result.Status == "plan_limited" {
+				ttl = 24 * time.Hour
+			}
+			if result.Status != "plan_limited" && result.Status != "no_data" && (previous.Status == "ok" || previous.Status == "stale") {
 				retry := result.RetryAt
 				result = previous
 				result.RetryAt = retry
@@ -378,7 +387,11 @@ func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes 
 	r.Header.Set("User-Agent", "Subregator/0.2 (+https://github.com/subregator/subregator-backend)")
 	r.Header.Set("Accept", "application/json, application/rdap+json")
 	if auth != "" {
-		r.Header.Set("Authorization", "Bearer "+auth)
+		if r.URL.Scheme == "https" && r.URL.Host == "api.abuseipdb.com" {
+			r.Header.Set("Key", auth)
+		} else {
+			r.Header.Set("Authorization", "Bearer "+auth)
+		}
 	}
 	response, e := s.client.Do(r)
 	if e != nil {
@@ -389,8 +402,17 @@ func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes 
 	if response.StatusCode == 404 {
 		return nil, ErrNoData
 	}
+	if response.StatusCode == 402 && r.URL.Host == "api.abuseipdb.com" {
+		return nil, errSourcePlan
+	}
 	if response.StatusCode == 429 {
-		return nil, &sourceLimited{Until: s.deferSource(ctx, rawURL, response.Header.Get("Retry-After"))}
+		retry := response.Header.Get("Retry-After")
+		if retry == "" && r.URL.Host == "api.abuseipdb.com" {
+			if epoch, e := strconv.ParseInt(response.Header.Get("X-RateLimit-Reset"), 10, 64); e == nil && epoch > time.Now().Unix() {
+				retry = time.Unix(epoch, 0).UTC().Format(http.TimeFormat)
+			}
+		}
+		return nil, &sourceLimited{Until: s.deferSource(ctx, rawURL, retry)}
 	}
 	if response.StatusCode != 200 {
 		return nil, errors.New("upstream unavailable")
@@ -420,6 +442,8 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	var result Metric
 	var e error
 	switch m.Name {
+	case "abuse":
+		result, e = s.abuse(ctx, target)
 	case "irr":
 		result, e = s.irr(ctx, target)
 	case "rdap":
@@ -482,7 +506,11 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	}
 	if e != nil {
 		m.Status = "unavailable"
-		m.Error = "Free upstream source unavailable or response invalid"
+		m.Error = "Upstream source unavailable or response invalid"
+		if errors.Is(e, errSourcePlan) {
+			m.Status = "plan_limited"
+			m.Error = "Source account plan does not permit this query"
+		}
 		if errors.Is(e, ErrNoData) {
 			m.Status = "no_data"
 			m.Error = "No observation in this source coverage"
@@ -504,6 +532,7 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	m.SourceURL = result.SourceURL
 	m.Registration = result.Registration
 	m.IRR = result.IRR
+	m.Abuse = result.Abuse
 	m.RetryAt = result.RetryAt
 	if m.Name == "registration" {
 		m.Registration = normalizeWhois(m.Data, m.SourceURL, target)
