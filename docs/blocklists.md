@@ -35,3 +35,5 @@ Next: obtain licensed HTTPS product access and agree quota, IP selection/refresh
 References reviewed 2026-11-25: [HTTPS product](https://docs.spamhaus.com/datasets/docs/source/70-access-methods/web-query-service/000-intro.html), [authentication](https://docs.spamhaus.com/datasets/docs/source/70-access-methods/web-query-service/020-api-auth.html), [requests and return codes](https://docs.spamhaus.com/datasets/docs/source/70-access-methods/web-query-service/040-api-queries.html), [list semantics](https://docs.spamhaus.com/datasets/docs/source/10-data-type-documentation/datasets/030-datasets.html).
 
 A public alternative probe of `https://sslbl.abuse.ch/blacklist/sslipblacklist.csv` returned a notice that the IP list was deprecated on 2025-01-03, with that stale update date. Its empty body was not treated as a current all-clear and it was not integrated. No claim about other SSLBL products is made from that one file.
+
+See [durable observation history](observation-history.md) for the separate default-off retention/publication allowlist, source restrictions, conservative change bounds and PostgreSQL migration.

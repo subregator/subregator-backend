@@ -195,3 +195,18 @@ func TestSpamhausConfigurationAndKeyPrivacy(t *testing.T) {
 		}
 	}
 }
+
+func TestHistoryConfigDefaultAndPrecedence(t *testing.T) {
+	c, e := loadConfig(nil, envMap(nil), io.Discard)
+	if e != nil || c.HistoryChecks != "" {
+		t.Fatal(e, c.HistoryChecks)
+	}
+	c, e = loadConfig(nil, envMap(map[string]string{"SUBREGATOR_HISTORY_CHECKS": "rpki"}), io.Discard)
+	if e != nil || c.HistoryChecks != "rpki" {
+		t.Fatal(e, c.HistoryChecks)
+	}
+	c, e = loadConfig([]string{"-history-checks="}, envMap(map[string]string{"SUBREGATOR_HISTORY_CHECKS": "rpki"}), io.Discard)
+	if e != nil || c.HistoryChecks != "" {
+		t.Fatal(e, c.HistoryChecks)
+	}
+}

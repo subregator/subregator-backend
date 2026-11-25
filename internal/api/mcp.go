@@ -66,6 +66,10 @@ func (s *service) mcpHandler() http.Handler {
 		r, e := s.lookup(ctx, in)
 		return nil, r, e
 	})
+	mcp.AddTool(server, tool("network_history", "Read durable normalized observations and conservative change bounds for a known public prefix; no external collection; optional unapproved source histories excluded"), func(ctx context.Context, _ *mcp.CallToolRequest, in filterInput) (*mcp.CallToolResult, any, error) {
+		r, e := s.observations(ctx, values(in))
+		return nil, r, e
+	})
 	mcp.AddTool(server, tool("network_checks", "List available free checks, input types, cache TTLs and source coverage limitations"), func(_ context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
 		return nil, map[string]any{"items": intelligence.Capabilities()}, nil
 	})

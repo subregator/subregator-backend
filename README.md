@@ -75,3 +75,5 @@ Follow the [backend roadmap issues](https://github.com/subregator/subregator-bac
 [MIT](LICENSE). Third-party software notices are listed in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt). Provider data remains subject to its source terms.
 
 See [subnet market and price history](docs/subnet-market.md) for exact-prefix seller comparison, quoted costs, provider gaps, REST/MCP pagination and explicit parent/child relationships.
+
+[Durable observation history](docs/observation-history.md): opt-in normalized check storage, conservative change bounds and cached-only REST/MCP queries.

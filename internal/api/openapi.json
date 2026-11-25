@@ -1447,6 +1447,83 @@
           }
         }
       }
+    },
+    "/api/v1/network/history": {
+      "get": {
+        "summary": "Read durable check observations and inferred changes",
+        "description": "Cached-only, exact known public CIDR. Current provider disclosure and history-check approval apply to all rows. Disabled, hidden and unknown resource histories return empty items. Stable ingestion-ID pagination; late source observations are retained without retroactive inferred events. previous_seen and observed_at bound inferred changes, not exact event dates. first_seen/last_seen bound recorded sightings of the same normalized state; gap indicates uncertain continuity. Freshness is as captured, never current approval.",
+        "parameters": [
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact public IPv4 or IPv6 CIDR"
+          },
+          {
+            "name": "after_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stored observations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationHistoryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "History storage disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4522,6 +4599,161 @@
           "minor_unit"
         ],
         "description": "Calculated quoted charges in source currency with aligned minor-unit scale; exact nonnegative int64, distinct from the per-source-price bound."
+      },
+      "ArchivedObservation": {
+        "type": "object",
+        "properties": {
+          "observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "source_updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "previous_seen": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "first_seen": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_seen": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "identity": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "check": {
+            "type": "string",
+            "enum": [
+              "prefix_overview",
+              "rpki",
+              "registration",
+              "rdap",
+              "spamhaus_drop"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "ingested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation"
+          },
+          "evidence": {
+            "description": "Normalized source-scoped evidence only; no raw responses. Null for failed or malformed checks. DROP includes source copyright and update date.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BGPExplanation"
+              },
+              {
+                "$ref": "#/components/schemas/RPKIExplanation"
+              },
+              {
+                "$ref": "#/components/schemas/Registration"
+              },
+              {
+                "$ref": "#/components/schemas/OfferCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "observation",
+              "gap",
+              "out_of_order",
+              "bgp_origins_changed",
+              "rpki_transition",
+              "registry_changed",
+              "listed",
+              "delisted"
+            ]
+          },
+          "gap": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "observed_at",
+          "source_updated_at",
+          "expires_at",
+          "previous_seen",
+          "first_seen",
+          "last_seen",
+          "id",
+          "identity",
+          "resource",
+          "check",
+          "source",
+          "ingested_at",
+          "observation",
+          "evidence",
+          "event",
+          "gap"
+        ]
+      },
+      "ObservationHistoryResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/ArchivedObservation"
+            }
+          },
+          "next_cursor": {
+            "type": "integer",
+            "description": "Pass as after_id; omitted at end"
+          },
+          "semantics": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ]
       }
     }
   }

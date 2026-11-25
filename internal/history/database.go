@@ -111,11 +111,14 @@ func (d *DB) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if _, err = tx.ExecContext(ctx, observationSchema); err != nil {
+		return err
+	}
 	var version int
 	if err = tx.QueryRowContext(ctx, "SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		return err
 	}
-	if version != 1 {
+	if version != 2 {
 		return errors.New("unsupported database schema version")
 	}
 	return tx.Commit()

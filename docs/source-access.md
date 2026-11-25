@@ -72,3 +72,5 @@ The owner supplied a key for evaluation; it was used transiently and not copied 
 Optional Spamhaus ZEN now has a fixed-host HTTPS adapter, disabled by default. DNS Blocklists via HTTPS requires its own product access and Bearer query key; DQS DNS or SIA entitlement is not assumed. No appropriate configured account/quota or public redistribution/retention agreement is verified, so an authenticated pilot remains open. The bounded initial strategy is one canonical first-address lookup per published prefix, with explicitly partial subnet coverage and separate SBL/XBL/PBL findings. No DNS sampling, whole-range enumeration or universal clean result is introduced. See [contract and official references](blocklists.md).
 
 SSLBL's public Botnet C2 IP CSV was probed once as an alternative. It returned a 2025-01-03 deprecation notice, not a current empty complete dataset; it was not integrated. No trial, purchase, operator contact or account change occurred.
+
+See [durable observation history](observation-history.md) for the separate default-off retention/publication allowlist, source restrictions, conservative change bounds and PostgreSQL migration.

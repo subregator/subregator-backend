@@ -27,3 +27,5 @@ Projection limits are 32 records, registrants, statuses, events and contacts; ne
 Synthetic fixtures exercise all five RIR service identities, scalar/structured organization names, nested contacts, missing contacts, malformed and unrelated ranges, IPv4/IPv6 and ASN coverage, fallback failure, and legacy cache projection. PostgreSQL-backed REST/MCP tests validate the OpenAPI contract. These checks do not establish current live RIR payload compatibility or permission for bulk archival/public redistribution; see the [source inventory](source-access.md).
 
 References: [RDAP response format](https://www.rfc-editor.org/rfc/rfc9083.html), [jCard](https://www.rfc-editor.org/rfc/rfc7095.html), [RIPEstat WHOIS](https://stat.ripe.net/docs/data-api/api-endpoints/whois), [RIPEstat abuse contacts](https://stat.ripe.net/docs/data-api/api-endpoints/abuse-contact-finder).
+
+See [durable observation history](observation-history.md) for the separate default-off retention/publication allowlist, source restrictions, conservative change bounds and PostgreSQL migration.

@@ -55,3 +55,5 @@ Collection reuses the existing shared budget, source Retry-After persistence, ca
 Verification uses synthetic source fixtures, REST/MCP contract tests, race tests and real PostgreSQL restart tests. Live provider compatibility, externally verified collector capacity, source redistribution/retention permission, stand and production deployment remain unverified.
 
 Sources: [prefix overview](https://stat.ripe.net/docs/data-api/api-endpoints/prefix-overview), [routing status](https://stat.ripe.net/docs/data-api/api-endpoints/routing-status), [RPKI validation](https://stat.ripe.net/docs/data-api/api-endpoints/rpki-validation).
+
+See [durable observation history](observation-history.md) for the separate default-off retention/publication allowlist, source restrictions, conservative change bounds and PostgreSQL migration.
