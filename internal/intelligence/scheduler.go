@@ -160,6 +160,11 @@ func (a *Automatic) Run(ctx context.Context, store *catalog.Store) {
 					}
 					work.Overview = &overview
 				}
+				if name == "irr" {
+					if overview, found := a.evidence[key]["prefix_overview"]; found {
+						work.Overview = &overview
+					}
+				}
 				job.Running = true
 				workContext, workCancel := context.WithCancel(ctx)
 				work.Context = workContext
@@ -223,7 +228,7 @@ func (a *Automatic) restoreSchedule(ctx context.Context, key string, names []str
 		if !a.service.network {
 			a.jobs[key][m.Name] = scheduledCheck{}
 		}
-		if m.Name == "prefix_overview" || m.Name == "rpki" || m.Name == "routing_status" {
+		if m.Name == "prefix_overview" || m.Name == "rpki" || m.Name == "routing_status" || m.Name == "irr" {
 			a.evidence[key][m.Name] = compactEvidence(m)
 		}
 	}
@@ -247,7 +252,7 @@ func (a *Automatic) completeCheck(ctx context.Context, result checkResult) {
 		jobs[result.Name] = scheduledCheck{Next: result.Next}
 	} else {
 		jobs[result.Name] = nextCheck(result.Metric, jobs[result.Name], time.Now())
-		if result.Name == "prefix_overview" || result.Name == "rpki" || result.Name == "routing_status" {
+		if result.Name == "prefix_overview" || result.Name == "rpki" || result.Name == "routing_status" || result.Name == "irr" {
 			a.evidence[result.Key][result.Name] = compactEvidence(result.Metric)
 		}
 	}
@@ -292,8 +297,12 @@ func (a *Automatic) syncDue(key string) {
 }
 
 func compactEvidence(m Metric) Metric {
+	m.IRR = nil
 	m.BGP = nil
 	m.RPKI = nil
+	if m.Name == "irr" {
+		return m
+	}
 	if m.Name == "prefix_overview" {
 		var data prefixOverview
 		if json.Unmarshal(m.Data, &data) == nil {

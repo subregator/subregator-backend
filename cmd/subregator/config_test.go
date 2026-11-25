@@ -127,3 +127,21 @@ func TestPostgreSQLConfigurationDoesNotExposeCredentials(t *testing.T) {
 		t.Fatal("non-PostgreSQL runtime accepted")
 	}
 }
+
+func TestIRRConfigurationGate(t *testing.T) {
+	c, err := loadConfig(nil, envMap(nil), io.Discard)
+	if err != nil || c.IRR {
+		t.Fatal("IRR must be off by default", err)
+	}
+	c, err = loadConfig(nil, envMap(map[string]string{"SUBREGATOR_IRR": "true"}), io.Discard)
+	if err != nil || !c.IRR {
+		t.Fatal("IRR environment ignored", err)
+	}
+	c, err = loadConfig([]string{"-irr=false"}, envMap(map[string]string{"SUBREGATOR_IRR": "invalid"}), io.Discard)
+	if err != nil || c.IRR {
+		t.Fatal("IRR flag precedence broken", err)
+	}
+	if _, err = loadConfig(nil, envMap(map[string]string{"SUBREGATOR_IRR": "private-value"}), io.Discard); err == nil || strings.Contains(err.Error(), "private-value") {
+		t.Fatal("invalid IRR setting exposed or accepted")
+	}
+}

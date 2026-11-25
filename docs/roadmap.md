@@ -28,7 +28,7 @@ The bounded network cache is not a durable archive of checks. Existing history c
 | BE-04 | P0 | Make scheduling source-aware | BE-01, BE-02 | Merged in #21–#23; external verification limits remain |
 | BE-05 | P0 | Normalize RIR, registration and abuse contacts | BE-01, BE-03, BE-04 | Merged in #21–#23; external verification limits remain |
 | BE-06 | P0 | Complete BGP and RPKI explanations | BE-03, BE-04 | Implemented locally; delivery pending |
-| BE-07 | P0 | Add IRR consistency checks | BE-01, BE-03, BE-04, BE-06 | Planned |
+| BE-07 | P0 | Add IRR consistency checks | BE-01, BE-03, BE-04, BE-06 | Implemented locally; source enablement and delivery pending |
 | BE-08 | P0 | Add subnet abuse observations | BE-01, BE-03, BE-04 | Planned |
 | BE-09 | P0 | Extend blocklist coverage beyond DROP | BE-01, BE-03, BE-04 | Planned |
 | BE-10 | P0 | Store durable check observations and changes | BE-01, BE-03 | Planned |
@@ -98,9 +98,11 @@ Implementation: additive typed BGP/RPKI explanations, source-dated RIS visibilit
 ### BE-07 — Add IRR consistency checks
 
 - [ ] Pilot IRRexplorer/IRRd access; select the smallest supported integration after confirming endpoint terms and limits.
-- [ ] Return route/route6, object origin and registry source; compare with observed BGP origins. Preserve exact/containing relationships, duplicates and conflicting objects across registries.
+- [x] Return route/route6, object origin and registry source; compare with observed BGP origins. Preserve exact/containing relationships, duplicates and conflicting objects across registries.
 - **Done when:** missing objects, conflicts, BGP absence, unsupported scope and source failure have separate outcomes; IPv4 and IPv6 fixtures cover these cases. An IRR object is not proof of ownership or universal routing acceptance.
 - **Next step:** verify a representative prefix in each supported family and document response coverage. A full self-hosted IRR stack is not a prerequisite.
+
+Local adapter, comparison, cached REST/MCP/OpenAPI and persistence are implemented. The IPv4/IPv6 pilot confirmed response shapes and containing-route behavior. Quota and public redistribution/retention terms remain unconfirmed; collection is off by default. See [IRR contract](irr.md) and issue #9 for evidence and the enablement gate.
 
 ### BE-08 — Add subnet abuse observations
 

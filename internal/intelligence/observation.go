@@ -33,7 +33,7 @@ func observation(status string, observed, expires *time.Time, now time.Time) Obs
 		o.CollectionStatus = status
 	case "unavailable":
 		o.CollectionStatus = "failed"
-	case "ok", "stale", "announced", "not_announced", "covering_route", "valid", "invalid", "not_found", "mixed", "partial", "listed", "not_listed":
+	case "consistent", "conflict", "missing_objects", "bgp_absent", "bgp_unavailable", "ok", "stale", "announced", "not_announced", "covering_route", "valid", "invalid", "not_found", "mixed", "partial", "listed", "not_listed":
 		if observed != nil {
 			o.CollectionStatus = "succeeded"
 		}
@@ -54,6 +54,12 @@ func metricObservation(m Metric, target Target, q Query, now time.Time) Observat
 		o.FailureReason = m.Error
 	}
 	if m.Status != "ok" && m.Status != "stale" || m.ObservedAt == nil {
+		return o
+	}
+	if m.IRR != nil {
+		o.Completeness = m.IRR.Completeness
+		o.Scope.Resource = m.IRR.Prefix
+		o.Scope.Relation = "overlap"
 		return o
 	}
 	if m.BGP != nil {
@@ -140,6 +146,12 @@ func checkObservation(c Check, resource, name string, now time.Time) Observation
 	if c.ObservedAt == nil {
 		return o
 	}
+	if c.IRR != nil {
+		o.Completeness = c.IRR.Completeness
+		o.Scope.Resource = c.IRR.Prefix
+		o.Scope.Relation = "overlap"
+		return o
+	}
 	if c.BGP != nil {
 		o.Completeness = c.BGP.Completeness
 		o.Scope.Resource = c.BGP.Prefix
@@ -174,10 +186,19 @@ func checkObservation(c Check, resource, name string, now time.Time) Observation
 	return o
 }
 
-func (s *Service) initialMetric(target Target, name string) Metric {
+func (s *Service) initialMetric(target Target, name string, q Query) Metric {
 	d := definitions[name]
 	m := Metric{Name: name, Status: "pending", Source: d.Source, Coverage: d.Coverage, Data: json.RawMessage("null")}
-	if !slices.Contains(d.Kinds, target.Kind) {
+	if name == "irr" && !s.irrEnabled {
+		m.Status = "not_configured"
+		m.Error = "IRR source access, quotas and publication/retention rights are not configured"
+	} else if name == "irr" && (q.ASN != 0 || q.StartTime != "" || q.EndTime != "" || q.Version != "") {
+		m.Status = "not_applicable"
+		m.Error = "IRR supports current prefix observations only, without historical parameters or a proposed ASN"
+	} else if name == "irr" && !irrSupported(target) {
+		m.Status = "not_applicable"
+		m.Error = "Unsupported IRR scope: IPv4 /9 or longer, IPv6 /29 or longer required"
+	} else if !slices.Contains(d.Kinds, target.Kind) {
 		m.Status = "not_applicable"
 	} else if name == "ipinfo_lite" && s.token == "" {
 		m.Status = "not_configured"

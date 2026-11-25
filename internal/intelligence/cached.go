@@ -14,7 +14,7 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 	}
 	report := Report{Resource: target, Metrics: []Metric{}, Semantics: "source_observations_not_ownership_or_reachability_guarantees"}
 	for _, name := range q.Checks {
-		m := s.initialMetric(target, name)
+		m := s.initialMetric(target, name, q)
 		key := metricKey(target, q, name)
 		if s.cache != nil && m.Status == "pending" {
 			b, expires, found, err := s.cache.CacheGet(ctx, key)
@@ -35,6 +35,11 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 		}
 		m = decorateRegistration(m, target)
 		m = decorateRouting(m, target, q.ASN)
+		m = decorateIRR(m, target, time.Now())
+		if m.IRR != nil {
+			dependency, _ := s.Cached(ctx, Query{Resource: target.Value, Checks: []string{"prefix_overview"}})
+			compareIRR(&m, dependency.Metrics[0], target, time.Now())
+		}
 		if m.RPKI != nil && m.RPKI.Basis == "observed_origins" && target.Kind == "prefix" {
 			dependency, _ := s.Cached(ctx, Query{Resource: target.Value, Checks: []string{"prefix_overview"}})
 			overview := dependency.Metrics[0]
