@@ -28,7 +28,7 @@ func TestRealFormatFixtures(t *testing.T) {
 	if e != nil || len(offers) != 2 || total != 2 {
 		t.Fatal(e)
 	}
-	peak, e := ParsePeaktera(read(t, "peaktera.html"), at)
+	peak, e := ParsePeaktera(read(t, "peaktera.csv"), at)
 	if e != nil || len(peak) != 1 || len(peak[0].Quotes) != 4 {
 		t.Fatal(e)
 	}
@@ -45,8 +45,8 @@ func TestRealFormatFixtures(t *testing.T) {
 			}
 		}
 	}
-	if peak[0].Quotes[0].MinimumMonths != nil {
-		t.Fatal("billing term assumed to be contractual minimum")
+	if peak[0].Quotes[0].MinimumMonths == nil || *peak[0].Quotes[0].MinimumMonths != 1 {
+		t.Fatal("Peaktera minimum commitment missing")
 	}
 	if peak[0].Quotes[0].Fees[0].Amount.AmountMinor != 0 {
 		t.Fatal("confirmed zero setup lost")

@@ -60,6 +60,7 @@ type Fee struct {
 	Refundable *bool  `json:"refundable"`
 }
 type Quote struct {
+	OrderURL      string `json:"order_url,omitempty"`
 	ID            string `json:"id"`
 	Price         *Money `json:"price"`
 	BillingMonths int    `json:"billing_months"`
@@ -180,6 +181,9 @@ func Normalize(o Offer, p Provider, now time.Time) (Offer, error) {
 			return bad("quote")
 		}
 		quoteIDs[q.ID] = true
+		if q.OrderURL != "" && !WebURL(q.OrderURL) {
+			return bad("quote URL")
+		}
 		if q.MinimumMonths != nil && (*q.MinimumMonths < 0 || *q.MinimumMonths > 1200) {
 			return bad("minimum term")
 		}
@@ -213,6 +217,7 @@ func Normalize(o Offer, p Provider, now time.Time) (Offer, error) {
 		o.Routing = Routing{}
 		o.Geography.City = ""
 		for i := range o.Quotes {
+			o.Quotes[i].OrderURL = ""
 			for j := range o.Quotes[i].Fees {
 				o.Quotes[i].Fees[j].Condition = ""
 			}
@@ -248,4 +253,19 @@ func NormalizeRIR(s string) string {
 		return "RIPE NCC"
 	}
 	return s
+}
+
+func (o Offer) Publishable(now time.Time) bool {
+	if o.ProviderID != "peaktera" {
+		return true
+	}
+	if o.ObservedAt.IsZero() || now.Sub(o.ObservedAt) > time.Hour || o.ObservedAt.After(now.Add(time.Minute)) {
+		return false
+	}
+	for _, q := range o.Quotes {
+		if q.OrderURL == "" {
+			return false
+		}
+	}
+	return len(o.Quotes) > 0
 }

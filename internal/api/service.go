@@ -44,10 +44,11 @@ func (s *service) offers(filters url.Values) (Result, error) {
 			return Result{}, badQuery("Unknown provider")
 		}
 	}
-	if q.Snapshot != "" && q.Snapshot != v.Generation {
+	now := time.Now()
+	if q.Snapshot != "" && q.Snapshot != v.PublicGeneration(now) {
 		return Result{}, &apiError{409, "snapshot_changed", "Restart pagination using the current snapshot"}
 	}
-	result := Search(v, q, time.Now())
+	result := Search(v, q, now)
 	for i := range result.Items {
 		s.attachChecks(&result.Items[i])
 	}
@@ -60,6 +61,9 @@ func (s *service) offer(id string) (Item, error) {
 		return Item{}, &apiError{404, "not_found", "Offer not found"}
 	}
 	o := v.Offers[i]
+	if !o.Publishable(time.Now()) {
+		return Item{}, &apiError{404, "not_found", "Offer not found"}
+	}
 	ids := []string{}
 	for _, q := range o.Quotes {
 		ids = append(ids, q.ID)
@@ -105,7 +109,7 @@ func (s *service) allowed(provider string, fullOnly bool) ([]string, error) {
 		if provider != "" && p.ID != provider {
 			continue
 		}
-		if p.Policy.Publication == "pending" || fullOnly && p.Policy.PrefixVisibility != "full" {
+		if p.ID == "peaktera" || p.Policy.Publication == "pending" || fullOnly && p.Policy.PrefixVisibility != "full" {
 			continue
 		}
 		out = append(out, p.ID)
@@ -117,7 +121,7 @@ func (s *service) redact(o *catalog.Offer) *catalog.Offer {
 		return nil
 	}
 	p, ok := s.store.Provider(o.ProviderID)
-	if !ok || p.Policy.Publication == "pending" {
+	if !ok || p.ID == "peaktera" || p.Policy.Publication == "pending" {
 		return nil
 	}
 	if p.Policy.PrefixVisibility == "full" {
@@ -243,7 +247,7 @@ func (s *service) listing(ctx context.Context, id string) (history.Listing, erro
 		return result, &apiError{500, "history_failed", "Could not query listing"}
 	}
 	p, ok := s.store.Provider(result.ProviderID)
-	if !ok || p.Policy.Publication == "pending" {
+	if !ok || p.ID == "peaktera" || p.Policy.Publication == "pending" {
 		return history.Listing{}, &apiError{404, "not_found", "Listing not found"}
 	}
 	o := s.redact(&result.Offer)

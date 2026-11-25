@@ -1,0 +1,5 @@
+prefix,prefix_length,addresses,rir,country,region,city,term,term_months,price_per_cycle,monthly_equivalent,setup_fee,deposit,due_today,currency,order_url,geo_source
+45.41.20.0/22,22,1024,arin,US,,,monthly,1,500.00,500.00,0.00,1000.00,1500.00,USD,https://www.peaktera.com/portal/checkout?range=1&prefix=45.41.20.0%2F22&term=monthly,maxmind
+45.41.20.0/22,22,1024,arin,US,,,quarterly,3,2250.00,750.00,0.00,0.00,2250.00,USD,https://www.peaktera.com/portal/checkout?range=1&prefix=45.41.20.0%2F22&term=quarterly,maxmind
+45.41.20.0/22,22,1024,arin,US,,,biannual,6,3200.00,533.33,0.00,0.00,3200.00,USD,https://www.peaktera.com/portal/checkout?range=1&prefix=45.41.20.0%2F22&term=biannual,maxmind
+45.41.20.0/22,22,1024,arin,US,,,annual,12,4000.00,333.33,0.00,0.00,4000.00,USD,https://www.peaktera.com/portal/checkout?range=1&prefix=45.41.20.0%2F22&term=annual,maxmind
