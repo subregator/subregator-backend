@@ -1,0 +1,18 @@
+api.subregator.com {
+	reverse_proxy {$SUBREGATOR_UPSTREAM:127.0.0.1:8080}
+}
+
+mcp.subregator.com {
+	@transport path / /mcp
+	handle @transport {
+		rewrite * /mcp
+		reverse_proxy {$SUBREGATOR_UPSTREAM:127.0.0.1:8080} {
+			header_up Host localhost:8080
+			header_up Origin "^https://mcp\.subregator\.com$" "http://localhost:8080"
+			flush_interval -1
+		}
+	}
+	handle {
+		respond 404
+	}
+}

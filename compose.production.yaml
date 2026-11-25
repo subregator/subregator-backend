@@ -1,0 +1,130 @@
+name: subregator
+
+services:
+  backend:
+    networks:
+      default: {}
+      edge:
+        aliases: [subregator-origin]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.services.subregator-api.loadbalancer.server.port: "8080"
+      traefik.http.routers.subregator-api.rule: Host(`api.subregator.com`)
+      traefik.http.routers.subregator-api.entrypoints: https
+      traefik.http.routers.subregator-api.priority: "200"
+      traefik.http.routers.subregator-api.service: subregator-api
+      traefik.http.routers.subregator-api.tls.certresolver: letsencrypt
+      traefik.http.routers.subregator-api-http.rule: Host(`api.subregator.com`)
+      traefik.http.routers.subregator-api-http.entrypoints: http
+      traefik.http.routers.subregator-api-http.priority: "200"
+      traefik.http.routers.subregator-api-http.service: subregator-api
+      traefik.http.routers.subregator-api-http.middlewares: subregator-redirect
+      traefik.http.middlewares.subregator-redirect.redirectscheme.scheme: https
+      traefik.http.middlewares.subregator-redirect.redirectscheme.permanent: "true"
+      traefik.http.routers.subregator-mcp.rule: Host(`mcp.subregator.com`) && (Path(`/`) || Path(`/mcp`))
+      traefik.http.routers.subregator-mcp.entrypoints: https
+      traefik.http.routers.subregator-mcp.priority: "200"
+      traefik.http.routers.subregator-mcp.service: subregator-api
+      traefik.http.routers.subregator-mcp.middlewares: subregator-mcp-rewrite
+      traefik.http.routers.subregator-mcp.tls.certresolver: letsencrypt
+      traefik.http.middlewares.subregator-mcp-rewrite.replacepath.path: /mcp
+      traefik.http.routers.subregator-mcp-http.rule: Host(`mcp.subregator.com`)
+      traefik.http.routers.subregator-mcp-http.entrypoints: http
+      traefik.http.routers.subregator-mcp-http.priority: "200"
+      traefik.http.routers.subregator-mcp-http.service: subregator-api
+      traefik.http.routers.subregator-mcp-http.middlewares: subregator-redirect
+    image: ${SUBREGATOR_IMAGE:-ghcr.io/subregator/subregator-backend:edge}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${SUBREGATOR_BIND:-127.0.0.1}:${SUBREGATOR_PORT:-18080}:8080"
+    environment:
+      SUBREGATOR_ADDR: 0.0.0.0:8080
+      SUBREGATOR_SNAPSHOT: /var/lib/subregator/catalog.json
+      SUBREGATOR_DATABASE_URL: ${SUBREGATOR_DATABASE_URL:-postgresql://postgres:5432/?sslmode=disable}
+      PGUSER: ${POSTGRES_USER:-subregator}
+      PGDATABASE: ${POSTGRES_DB:-subregator}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      SUBREGATOR_REQUESTS_RPS: ${SUBREGATOR_REQUESTS_RPS:-100}
+      SUBREGATOR_MAX_CONCURRENT: ${SUBREGATOR_MAX_CONCURRENT:-32}
+      SUBREGATOR_CHECKS_RPM: ${SUBREGATOR_CHECKS_RPM:-120}
+      SUBREGATOR_IPINFO_LITE_TOKEN: ${SUBREGATOR_IPINFO_LITE_TOKEN:-}
+      SUBREGATOR_NETWORK: ${SUBREGATOR_NETWORK:-true}
+      SUBREGATOR_CORS_ORIGIN: ${SUBREGATOR_CORS_ORIGIN:-}
+      SUBREGATOR_LOG_FORMAT: ${SUBREGATOR_LOG_FORMAT:-json}
+      SUBREGATOR_LOG_LEVEL: ${SUBREGATOR_LOG_LEVEL:-info}
+    volumes:
+      - catalog:/var/lib/subregator
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    stop_grace_period: 15s
+
+  frontend:
+    networks: [default, edge]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.services.subregator-web.loadbalancer.server.port: "8080"
+      traefik.http.routers.subregator-web.rule: Host(`subregator.com`)
+      traefik.http.routers.subregator-web.entrypoints: https
+      traefik.http.routers.subregator-web.priority: "200"
+      traefik.http.routers.subregator-web.service: subregator-web
+      traefik.http.routers.subregator-web.tls.certresolver: letsencrypt
+      traefik.http.routers.subregator-web-http.rule: Host(`subregator.com`)
+      traefik.http.routers.subregator-web-http.entrypoints: http
+      traefik.http.routers.subregator-web-http.priority: "200"
+      traefik.http.routers.subregator-web-http.service: subregator-web
+      traefik.http.routers.subregator-web-http.middlewares: subregator-redirect
+    image: ${SUBREGATOR_FRONTEND_IMAGE:-ghcr.io/subregator/subregator-frontend:edge}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${SUBREGATOR_FRONTEND_BIND:-127.0.0.1}:${SUBREGATOR_FRONTEND_PORT:-8081}:8080"
+    environment:
+      SUBREGATOR_API_URL: http://backend:8080
+      SUBREGATOR_CHECKS_DIR: /var/lib/subregator-checks
+    volumes:
+      - checks:/var/lib/subregator-checks
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    stop_grace_period: 30s
+
+  postgres:
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-subregator}
+      POSTGRES_DB: ${POSTGRES_DB:-subregator}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 512m
+    stop_grace_period: 30s
+
+volumes:
+  postgres:
+  catalog:
+  checks:
+
+networks:
+  edge:
+    external: true
+    name: coolify

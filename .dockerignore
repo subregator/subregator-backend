@@ -1,0 +1,13 @@
+.git
+.github
+var
+bin
+.env
+.env.*
+config
+feeds
+examples
+scripts
+*.log
+.DS_Store
+.deploy

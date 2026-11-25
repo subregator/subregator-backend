@@ -1,0 +1,77 @@
+{
+  "available": true,
+  "filters": {
+    "countries": [
+      "AE",
+      "AT",
+      "AU",
+      "BD",
+      "BE",
+      "BR",
+      "BZ",
+      "CA",
+      "CH",
+      "CN",
+      "CO",
+      "DE",
+      "FR",
+      "GB",
+      "GR",
+      "HK",
+      "HU",
+      "ID",
+      "IL",
+      "IN",
+      "JP",
+      "KR",
+      "LT",
+      "NL",
+      "PL",
+      "PY",
+      "SE",
+      "SG",
+      "UA",
+      "US"
+    ],
+    "lens": [
+      24,
+      23,
+      22
+    ],
+    "rirs": [
+      "arin",
+      "ripencc"
+    ]
+  },
+  "items": [
+    {
+      "city": "",
+      "country": "HK",
+      "id": "79.182.61.0/24",
+      "ips": 256,
+      "prefix": "79.182.61.0/24",
+      "prefix_len": 24,
+      "price_cents": 9721,
+      "rir": "ripencc",
+      "rpki": "automated",
+      "setup_cents": 1149
+    },
+    {
+      "city": "",
+      "country": "HK",
+      "id": "79.182.63.0/24",
+      "ips": 256,
+      "prefix": "79.182.63.0/24",
+      "prefix_len": 24,
+      "price_cents": 9721,
+      "rir": "ripencc",
+      "rpki": "automated",
+      "setup_cents": 1149
+    }
+  ],
+  "page": 1,
+  "per_page": 25,
+  "rpki_fee_cents": 2000,
+  "total": 2,
+  "updated_at": 1795516728
+}

@@ -1,0 +1,339 @@
+[
+  {
+    "id": "ipxo",
+    "name": "IPXO",
+    "url": "https://developer.ipxo.com/api-example",
+    "description": "Marketplace search; prefix, country, price, RIR and capability filters",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "onie",
+    "name": "ONIE",
+    "url": "https://onie.net/apidoc",
+    "description": "Public /24\u2013/22 market; monthly and setup prices; filtering, sorting, paging",
+    "policy": {
+      "publication": "public_source",
+      "prefix_visibility": "full",
+      "min_refresh_seconds": 900,
+      "conditions": [
+        "Public source; explicit redistribution permission requested."
+      ]
+    }
+  },
+  {
+    "id": "prefixx",
+    "name": "Prefixx",
+    "url": "https://prefixx.net/",
+    "description": "Official page explicitly advertises API inventory search, holds and orders",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "subnetpanel",
+    "name": "SubnetPanel",
+    "url": "https://subnetpanel.com/developer",
+    "description": "MCP inventory search and exact quotes advertised; REST order and lease docs",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "larus",
+    "name": "LARUS",
+    "url": "https://larus.net/network-partner/",
+    "description": "Real-time geolocation-ready address assignment advertised",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "trivox",
+    "name": "Trivox",
+    "url": "https://docs.trivox.sh/endpoints.html",
+    "description": "Owned ASN/subnet ranges, free IPs within owned ranges, server IPv4 add-on availability",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "ipbnb",
+    "name": "IPbnb",
+    "url": "https://ipbnb.com/",
+    "description": "Provider confirmed that no inventory API is currently available.",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "interlir",
+    "name": "InterLIR",
+    "url": "https://docs.interlir.com/",
+    "description": "Marketplace documented; automation articles do not document an inventory endpoint",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "ipv4-global",
+    "name": "IPv4.Global",
+    "url": "https://www.ipv4.global/",
+    "description": "Public listings and market ticker; separate ProVision product has API",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "ipv4-connect-brander-group",
+    "name": "IPv4 Connect / Brander Group",
+    "url": "https://ipv4connect.com/marketplace/",
+    "description": "Public masked subnet listings, size, RIR, price per IP",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "prefix-broker",
+    "name": "Prefix Broker",
+    "url": "https://www.prefixbroker.com/buy-ipv4/offers/",
+    "description": "Fixed-price purchase listings and leasing service",
+    "policy": {
+      "publication": "approved",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 86400,
+      "conditions": [
+        "At most once per day",
+        "Unauthenticated public pages only",
+        "Do not display prefixes",
+        "Link to provider offers"
+      ]
+    }
+  },
+  {
+    "id": "iptrading",
+    "name": "IPTrading",
+    "url": "https://iptrading.com/trading-post/",
+    "description": "IPv4 listings and pricing pages",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "ipv4center",
+    "name": "IPv4Center",
+    "url": "https://ipv4center.com/",
+    "description": "IPv4 marketplace; separately advertises blacklist monitoring API",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "ipv4mall",
+    "name": "IPv4Mall",
+    "url": "https://ipv4mall.com/en",
+    "description": "IPv4 brokerage and leasing",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "pubconcierge",
+    "name": "PubConcierge",
+    "url": "https://www.pubconcierge.com/data-platforms",
+    "description": "API-driven IP provisioning advertised on data-platform page",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "peaktera",
+    "name": "Peaktera",
+    "url": "https://www.peaktera.com/ip-ranges",
+    "description": "Exact public ranges; price and lease-term selection",
+    "policy": {
+      "publication": "public_source",
+      "prefix_visibility": "full",
+      "min_refresh_seconds": 900,
+      "conditions": [
+        "Public source; explicit redistribution permission requested."
+      ]
+    }
+  },
+  {
+    "id": "obhost",
+    "name": "OBHost",
+    "url": "https://www.obhost.net/ip-subnet-leasing",
+    "description": "Public IPv4 subnet inventory with exact prefixes, monthly prices and reserved-state observations; unpriced ranges require a quote.",
+    "policy": {
+      "publication": "public_source",
+      "prefix_visibility": "full",
+      "min_refresh_seconds": 86400,
+      "conditions": [
+        "Unauthenticated public inventory only; refresh at most once per day.",
+        "Keep reserved inventory distinct from available stock.",
+        "Provider ownership and reputation claims are not independent check results."
+      ]
+    }
+  },
+  {
+    "id": "ip4-market",
+    "name": "ip4.market",
+    "url": "https://ip4.market/",
+    "description": "Interested in cooperation; schema, refresh frequency and attribution details pending.",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "ip4market-org",
+    "name": "IP4market.org",
+    "url": "https://ip4market.org/en/",
+    "description": "IP resource services and prices",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "elisteka",
+    "name": "ELISTEKA",
+    "url": "https://elisteka.com/",
+    "description": "Interested in a read-only feed; no feed exists yet. Available, waitlist and confirmed upcoming stock must remain distinct.",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "ip-broker",
+    "name": "IP Broker",
+    "url": "https://ipbroker.com/en/services/ip-leasing/",
+    "description": "IPv4 purchase, sale and leasing services",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "ipv4-superhub",
+    "name": "IPv4 Superhub",
+    "url": "https://ipv4superhub.com/lease-ip-addresses/",
+    "description": "IPv4 services and leasing products",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "internet-vikings",
+    "name": "Internet Vikings",
+    "url": "https://internetvikings.com/ip-addresses/",
+    "description": "IP address rental service",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "voldeta",
+    "name": "Voldeta",
+    "url": "https://voldeta.com/en/product-category/buy-ipv4/",
+    "description": "Public purchase and lease product categories",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "neterra",
+    "name": "Neterra",
+    "url": "https://neterra.net/rental-of-resources/ripe-services",
+    "description": "IPv4 leasing and rDNS support",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "cogent",
+    "name": "Cogent",
+    "url": "https://support.cogentco.com/files/docs/about_cogent/investor_relations/reports/10k_report_2025.pdf",
+    "description": "Standalone and connectivity-linked IPv4 leasing described in company filing",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  },
+  {
+    "id": "ntt-data-global-ip-network",
+    "name": "NTT DATA Global IP Network",
+    "url": "https://www.gin.ntt.net/products-services/ipv4-address-leasing/",
+    "description": "IPv4 address leasing for network clients",
+    "policy": {
+      "publication": "pending",
+      "prefix_visibility": "hidden",
+      "min_refresh_seconds": 3600,
+      "conditions": []
+    }
+  }
+]

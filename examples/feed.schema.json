@@ -1,0 +1,404 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/Feed",
+  "$defs": {
+    "Money": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "amount_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000000
+        },
+        "minor_unit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        }
+      },
+      "required": [
+        "currency",
+        "amount_minor",
+        "minor_unit"
+      ]
+    },
+    "Fee": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "amount": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frequency": {
+          "type": "string",
+          "enum": [
+            "once",
+            "monthly",
+            "per_cycle",
+            "unknown"
+          ]
+        },
+        "condition": {
+          "type": "string"
+        },
+        "refundable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "amount",
+        "frequency",
+        "refundable"
+      ]
+    },
+    "Quote": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "billing_months": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        },
+        "minimum_months": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fees": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Fee"
+          }
+        },
+        "taxes": {
+          "type": "string",
+          "enum": [
+            "included",
+            "excluded",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "price",
+        "billing_months",
+        "minimum_months",
+        "fees",
+        "taxes"
+      ]
+    },
+    "Resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "type": "integer",
+          "enum": [
+            4,
+            6
+          ]
+        },
+        "prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prefix_length": {
+          "type": "integer"
+        },
+        "address_count": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "rir": {
+          "type": "string",
+          "enum": [
+            "RIPE NCC",
+            "ARIN",
+            "APNIC",
+            "LACNIC",
+            "AFRINIC"
+          ]
+        },
+        "registration_status": {
+          "type": "string"
+        },
+        "transfer_rirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "family",
+        "prefix_length"
+      ]
+    },
+    "Geography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "city": {
+          "type": "string"
+        },
+        "basis": {
+          "type": "string",
+          "enum": [
+            "provider_geolocation",
+            "seller_country",
+            "registry",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "basis"
+      ]
+    },
+    "Routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bgp": {
+          "type": "string"
+        },
+        "rpki": {
+          "type": "string"
+        },
+        "rdns": {
+          "type": "string"
+        },
+        "loa": {
+          "type": "string"
+        },
+        "own_asn": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "transit_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": []
+    },
+    "Terms": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "allowed_uses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "prohibited_uses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notice_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verification": {
+          "type": "string"
+        }
+      },
+      "required": []
+    },
+    "Offer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "provider_id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string",
+          "enum": [
+            "lease",
+            "purchase"
+          ]
+        },
+        "availability": {
+          "type": "string",
+          "enum": [
+            "available",
+            "waitlist",
+            "upcoming",
+            "unavailable",
+            "unknown"
+          ]
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource": {
+          "$ref": "#/$defs/Resource"
+        },
+        "geography": {
+          "$ref": "#/$defs/Geography"
+        },
+        "routing": {
+          "$ref": "#/$defs/Routing"
+        },
+        "quotes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Quote"
+          }
+        },
+        "terms": {
+          "$ref": "#/$defs/Terms"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source_updated_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "external_id",
+        "provider_id",
+        "model",
+        "availability",
+        "resource",
+        "geography",
+        "quotes",
+        "url",
+        "observed_at"
+      ]
+    },
+    "Feed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "provider_id": {
+          "type": "string"
+        },
+        "complete": {
+          "const": true
+        },
+        "offers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Offer"
+          }
+        }
+      },
+      "required": [
+        "schema_version",
+        "provider_id",
+        "complete",
+        "offers"
+      ]
+    }
+  }
+}

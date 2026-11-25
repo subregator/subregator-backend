@@ -1,0 +1,2289 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Subregator API",
+    "version": "0.2.0",
+    "description": "Read-only provider inventory comparison. Unknown values remain null or omitted; amounts are integers with explicit currency scale. Quotes are separate from resources. A zero fee means confirmed zero; null means unknown. Public responses contain normalized fields only, never raw provider payloads. Offers are observations, not reservations. Durable listing history and free network observations are exposed through REST and MCP Streamable HTTP. Marketplace providers are not necessarily resource owners."
+  },
+  "servers": [
+    {
+      "url": "https://api.subregator.com",
+      "description": "Public API"
+    },
+    {
+      "url": "http://localhost:8080",
+      "description": "Local development"
+    }
+  ],
+  "paths": {
+    "/api/v1/offers": {
+      "get": {
+        "summary": "Search available IP resource offers",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Comma separated provider IDs",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "Comma separated ISO country codes. Seller country excluded unless explicitly requested.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rir",
+            "in": "query",
+            "description": "Comma separated registries",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "description": "lease,purchase",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "availability",
+            "in": "query",
+            "description": "Comma separated states; defaults to available",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "family",
+            "in": "query",
+            "description": "IP version",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                4,
+                6
+              ]
+            }
+          },
+          {
+            "name": "min_prefix",
+            "in": "query",
+            "description": "Minimum prefix length",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "max_prefix",
+            "in": "query",
+            "description": "Maximum prefix length",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "billing_months",
+            "in": "query",
+            "description": "Require a matching billing term",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "description": "Required for price sort/filter. No currency conversion.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "geography_basis",
+            "in": "query",
+            "description": "Origin of location data",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Substring search, maximum 200 characters",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Stable sorting with ID tie breaker",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "price_asc",
+                "price_desc",
+                "prefix_asc",
+                "prefix_desc",
+                "updated_desc"
+              ]
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "description": "Use the response snapshot to prevent pagination across updates. Mismatch returns 409.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "min_price_minor",
+            "in": "query",
+            "description": "Minimum base price in hundredths of selected currency, monthly equivalent for lease, total for purchase; excludes fees and taxes",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "max_price_minor",
+            "in": "query",
+            "description": "Maximum base price on the same basis as min_price_minor",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "within",
+            "in": "query",
+            "description": "Only visible prefixes fully contained in this CIDR",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fresh_only",
+            "in": "query",
+            "description": "Exclude stale or disconnected sources",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (1..200), default 50",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Pagination offset (0..100000)",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged representation; ETag matched"
+          },
+          "429": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/offers/{id}": {
+      "get": {
+        "summary": "Get one offer with all quotes and source freshness",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged representation; ETag matched"
+          },
+          "429": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers": {
+      "get": {
+        "summary": "List providers, display policies and source health",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Providers"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged representation; ETag matched"
+          },
+          "429": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "Process liveness",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "At least one source has a successful snapshot, including a confirmed empty inventory",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/history": {
+      "get": {
+        "summary": "Read durable listing events, including removals and reappearances",
+        "description": "Only complete successful provider imports create disappearance events. resource_reappeared identifies a public prefix returning after an observed absence, including new listing IDs. Keyset cursor is independent of current-catalog pagination. History begins at tracking_started_at; baseline imports do not establish earlier lifecycle.",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Provider ID",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "listing_id",
+            "in": "query",
+            "description": "Stable listing ID, including removed listings",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "description": "Exact CIDR or all known prefixes covering an IP. Hidden providers are excluded.",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "resource_id",
+            "in": "query",
+            "description": "Resource ID; network correlation respects current disclosure policy",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Event type",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Inclusive event observation time",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "description": "Inclusive event observation time",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false
+          },
+          {
+            "name": "after_id",
+            "in": "query",
+            "description": "Events with a greater ID, ascending order",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size 1..200",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            }
+          },
+          "429": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/listings/{id}": {
+      "get": {
+        "summary": "Get a listing lifecycle and last observed offer, even after removal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Listing"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            }
+          },
+          "429": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources": {
+      "get": {
+        "summary": "Discover public exact-prefix identities and their provider associations",
+        "description": "Appearing at multiple providers does not establish a transfer or legal ownership. Masked prefixes cannot be correlated. New resources inserted before a keyset cursor require a fresh catalogue traversal; the append-only event feed can be used to discover every change.",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Filter known provider association",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "description": "Exact CIDR or covering ranges for an IP",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "after_id",
+            "in": "query",
+            "description": "Resource ID cursor",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size 1..200",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourcesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            }
+          },
+          "429": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/checks": {
+      "get": {
+        "summary": "List free source checks and their coverage limitations",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChecksResult"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network": {
+      "get": {
+        "summary": "Inspect a public IP, subnet or ASN using free public sources",
+        "description": "Read stored observations only. This endpoint never runs or refreshes external checks. Checks without a cached observation remain pending; automatic checks cover published catalogue prefixes. Historical parameter combinations and standalone IP/ASN queries may have no stored observation.",
+        "parameters": [
+          {
+            "name": "resource",
+            "in": "query",
+            "description": "Public IPv4, IPv6, CIDR or ASN",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "checks",
+            "in": "query",
+            "description": "Comma separated check names from /network/checks",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "description": "Start of routing-history window (requires end_time)",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "description": "End of routing-history window, at most 366 days after start",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Historical Whois version number or RFC3339 time",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "asn",
+            "in": "query",
+            "description": "Explicit origin for prefix/ASN checks",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            }
+          },
+          "503": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "summary": "MCP Streamable HTTP endpoint",
+        "description": "Official protocol SDK, stateless sessions, streaming SSE responses. Supports initialize, tools/list and tools/call. Tools share the REST service logic. Send Accept: application/json, text/event-stream and Content-Type: application/json. Request body is limited to 1 MiB. Cross-origin requests require the configured origin or the request origin.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MCP response",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Notification accepted"
+          },
+          "403": {
+            "description": "Origin/host not allowed"
+          },
+          "413": {
+            "description": "Body exceeds limit"
+          },
+          "429": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Money": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "minor_unit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6
+          }
+        },
+        "required": [
+          "currency",
+          "amount_minor",
+          "minor_unit"
+        ]
+      },
+      "Fee": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "once",
+              "monthly",
+              "per_cycle",
+              "unknown"
+            ]
+          },
+          "condition": {
+            "type": "string"
+          },
+          "refundable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "amount",
+          "frequency",
+          "refundable"
+        ]
+      },
+      "Quote": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "billing_months": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1200
+          },
+          "minimum_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            }
+          },
+          "taxes": {
+            "type": "string",
+            "enum": [
+              "included",
+              "excluded",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "price",
+          "billing_months",
+          "minimum_months",
+          "fees",
+          "taxes"
+        ]
+      },
+      "Resource": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "type": "integer",
+            "enum": [
+              4,
+              6
+            ]
+          },
+          "prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prefix_length": {
+            "type": "integer"
+          },
+          "address_count": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "rir": {
+            "type": "string",
+            "enum": [
+              "RIPE NCC",
+              "ARIN",
+              "APNIC",
+              "LACNIC",
+              "AFRINIC"
+            ]
+          },
+          "registration_status": {
+            "type": "string"
+          },
+          "transfer_rirs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "family",
+          "prefix_length"
+        ]
+      },
+      "Geography": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "city": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "provider_geolocation",
+              "seller_country",
+              "registry",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "basis"
+        ]
+      },
+      "Routing": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bgp": {
+            "type": "string"
+          },
+          "rpki": {
+            "type": "string"
+          },
+          "rdns": {
+            "type": "string"
+          },
+          "loa": {
+            "type": "string"
+          },
+          "own_asn": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transit_required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": []
+      },
+      "Terms": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "allowed_uses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prohibited_uses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notice_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verification": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "Offer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "lease",
+              "purchase"
+            ]
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "waitlist",
+              "upcoming",
+              "unavailable",
+              "unknown"
+            ]
+          },
+          "available_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "geography": {
+            "$ref": "#/components/schemas/Geography"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/Routing"
+          },
+          "quotes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Quote"
+            }
+          },
+          "terms": {
+            "$ref": "#/components/schemas/Terms"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "external_id",
+          "provider_id",
+          "model",
+          "availability",
+          "resource",
+          "geography",
+          "quotes",
+          "url",
+          "observed_at"
+        ]
+      },
+      "Item": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "lease",
+              "purchase"
+            ]
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "waitlist",
+              "upcoming",
+              "unavailable",
+              "unknown"
+            ]
+          },
+          "available_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "geography": {
+            "$ref": "#/components/schemas/Geography"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/Routing"
+          },
+          "quotes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Quote"
+            }
+          },
+          "terms": {
+            "$ref": "#/components/schemas/Terms"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "stale",
+              "unavailable",
+              "not_connected"
+            ]
+          },
+          "matching_quote_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checks": {
+            "$ref": "#/components/schemas/OfferChecks"
+          }
+        },
+        "required": [
+          "external_id",
+          "provider_id",
+          "model",
+          "availability",
+          "resource",
+          "geography",
+          "quotes",
+          "url",
+          "id",
+          "observed_at",
+          "freshness",
+          "matching_quote_ids"
+        ]
+      },
+      "Feed": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "complete": {
+            "const": true
+          },
+          "offers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Offer"
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "provider_id",
+          "complete",
+          "offers"
+        ]
+      },
+      "Result": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "snapshot": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            }
+          },
+          "facets": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema_version",
+          "snapshot",
+          "total",
+          "limit",
+          "offset",
+          "next_offset",
+          "items",
+          "facets"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "detail"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "Policy": {
+        "type": "object",
+        "properties": {
+          "publication": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "public_source"
+            ]
+          },
+          "prefix_visibility": {
+            "type": "string",
+            "enum": [
+              "full",
+              "hidden"
+            ]
+          },
+          "min_refresh_seconds": {
+            "type": "integer",
+            "minimum": 60
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "publication",
+          "prefix_visibility",
+          "min_refresh_seconds",
+          "conditions"
+        ]
+      },
+      "Source": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "provider_id": {
+            "type": "string"
+          },
+          "last_attempt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_success": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "error": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Provider": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "description": {
+            "type": "string"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/Policy"
+          },
+          "freshness": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "description",
+          "policy",
+          "freshness",
+          "source"
+        ]
+      },
+      "Providers": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Provider"
+            }
+          },
+          "snapshot": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "snapshot"
+        ]
+      },
+      "HistoryEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "listing_id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "next_resource_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "listed",
+              "changed",
+              "removed",
+              "relisted",
+              "resource_changed"
+            ]
+          },
+          "resource_reappeared": {
+            "type": "boolean"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Offer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Offer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "changed_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "listing_id",
+          "provider_id",
+          "resource_id",
+          "next_resource_id",
+          "type",
+          "resource_reappeared",
+          "observed_at",
+          "before",
+          "after",
+          "changed_fields"
+        ],
+        "additionalProperties": false
+      },
+      "HistoryResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryEvent"
+            }
+          },
+          "next_after_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tracking_started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "semantics": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_after_id",
+          "tracking_started_at",
+          "semantics"
+        ],
+        "additionalProperties": false
+      },
+      "Listing": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "first_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "removed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "appearances": {
+            "type": "integer"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "last_offer": {
+            "$ref": "#/components/schemas/Offer"
+          }
+        },
+        "required": [
+          "id",
+          "provider_id",
+          "resource_id",
+          "first_observed_at",
+          "last_observed_at",
+          "removed_at",
+          "appearances",
+          "active",
+          "last_offer"
+        ],
+        "additionalProperties": false
+      },
+      "KnownResource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "family": {
+            "type": "integer"
+          },
+          "prefix_length": {
+            "type": "integer"
+          },
+          "address_count": {
+            "type": "string"
+          },
+          "first_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "provider_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "active_offers": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "prefix",
+          "family",
+          "prefix_length",
+          "address_count",
+          "first_observed_at",
+          "last_observed_at",
+          "provider_ids",
+          "active_offers"
+        ],
+        "additionalProperties": false
+      },
+      "ResourcesResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnownResource"
+            }
+          },
+          "next_after_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "correlation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_after_id",
+          "correlation"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkTarget": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ip",
+              "prefix",
+              "asn"
+            ]
+          },
+          "asn": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkMetric": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ok",
+              "stale",
+              "disabled",
+              "not_configured",
+              "not_applicable",
+              "unavailable",
+              "rate_limited",
+              "no_data"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "coverage": {
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cached": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "data": {}
+        },
+        "required": [
+          "name",
+          "status",
+          "source",
+          "coverage",
+          "observed_at",
+          "expires_at",
+          "cached",
+          "data"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkReport": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "$ref": "#/components/schemas/NetworkTarget"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkMetric"
+            }
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "semantics": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "metrics",
+          "partial",
+          "semantics"
+        ],
+        "additionalProperties": false
+      },
+      "CheckDefinition": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "coverage": {
+            "type": "string"
+          },
+          "cache_ttl_seconds": {
+            "type": "integer"
+          },
+          "resource_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "free_token_required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "source",
+          "description",
+          "coverage",
+          "cache_ttl_seconds",
+          "resource_kinds",
+          "free_token_required"
+        ],
+        "additionalProperties": false
+      },
+      "ChecksResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckDefinition"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "OfferCheck": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "stale",
+              "unknown"
+            ]
+          },
+          "observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "coverage": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "origins": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "prefix": {
+                  "type": "string"
+                },
+                "reference": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "source_updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "copyright": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "freshness",
+          "observed_at",
+          "expires_at",
+          "source",
+          "coverage",
+          "reason"
+        ]
+      },
+      "OfferChecks": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string"
+          },
+          "bgp": {
+            "$ref": "#/components/schemas/OfferCheck"
+          },
+          "rpki": {
+            "$ref": "#/components/schemas/OfferCheck"
+          },
+          "blocklist": {
+            "$ref": "#/components/schemas/OfferCheck"
+          },
+          "semantics": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "bgp",
+          "rpki",
+          "blocklist",
+          "semantics"
+        ],
+        "description": "Automatically collected source-scoped results for a published prefix. Reading offers never triggers a check. Pending, stale and unavailable results are not passing checks. Omitted for withheld prefixes."
+      }
+    }
+  }
+}

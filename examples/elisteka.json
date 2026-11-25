@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "provider_id": "elisteka",
+  "complete": true,
+  "offers": [
+    {
+      "external_id": "example-ipv6-product",
+      "provider_id": "elisteka",
+      "model": "lease",
+      "availability": "waitlist",
+      "resource": {
+        "family": 6,
+        "prefix_length": 48,
+        "rir": "RIPE NCC"
+      },
+      "geography": {
+        "basis": "unknown"
+      },
+      "quotes": [
+        {
+          "id": "monthly",
+          "price": null,
+          "billing_months": 1,
+          "minimum_months": null,
+          "fees": [],
+          "taxes": "unknown"
+        }
+      ],
+      "url": "https://elisteka.com/",
+      "observed_at": "2026-11-24T00:00:00Z"
+    }
+  ]
+}

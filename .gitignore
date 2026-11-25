@@ -1,0 +1,9 @@
+/bin/
+/var/
+.env
+.env.*
+!.env.example
+/config/*.json
+/feeds/*.json
+*.log
+.DS_Store
