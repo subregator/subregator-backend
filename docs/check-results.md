@@ -32,14 +32,14 @@ Examples: legacy RPKI `invalid` and DROP `listed` can both have collection state
 
 - `requested`: canonical requested IP, prefix or ASN; `kind`: `ip`, `prefix` or `asn`.
 - Optional `resource`: the actual source-returned resource where identifiable.
-- `relation`: `exact`, `covering`, `overlap`, `origin_asns` or `unknown`. Unknown is not automatically exact. A covering BGP result is not an exact-prefix announcement.
+- `relation`: `exact`, `covering`, `contained`, `overlap`, `origin_asns` or `unknown`. Unknown is not automatically exact. A covering BGP result is not an exact-prefix announcement.
 - Optional `asn`, `start_time`, `end_time`, `version`: validated query qualifiers. Cached variants do not lose their requested window or ASN context.
 
 `failure_reason`, when present, contains a sanitized collection explanation; no credential or raw upstream error body is included. Source and source URL remain in the existing outer result. Missing source-specific fields remain absent/unknown, never false or zero by default.
 
 | Check family | Existing finding/payload | Scope and normalization boundary |
 | --- | --- | --- |
-| Registration / RIR / RDAP | Existing metric `data` retains registration fields and public notices | Registration range and organization normalization is BE-05; registry holder, seller and origin remain separate |
+| Registration / RIR / RDAP | Existing `data` and notices plus typed `registration` records and abuse contacts | [Registration contract](registration.md): actual range, explicit registrant/reference roles, published dates and unverified contacts; registry holder, seller and origin remain separate |
 | BGP | Offer finding distinguishes announced, covering route and not announced; metric retains collector data | Scope identifies exact/covering resource when available; richer collector explanations are BE-06 |
 | RPKI | Existing per-origin metric data and offer valid/invalid/not-found/mixed/partial findings | Explicit ASN qualifier is retained; ROA details and invalid-reason expansion are BE-06 |
 | IRR | No adapter enabled by this contract | BE-07 must provide route/route6, origin and registry evidence through the same envelope |

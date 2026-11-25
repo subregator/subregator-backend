@@ -33,6 +33,7 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 		if m.Status == "pending" && !s.network {
 			m.Status = "disabled"
 		}
+		m = decorateRegistration(m, target)
 		m.Observation = metricObservation(m, target, q, time.Now())
 		report.Metrics = append(report.Metrics, m)
 		if m.Status != "ok" {

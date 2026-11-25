@@ -17,6 +17,7 @@ Reviewed: 2026-11-25. This inventory distinguishes documented product capabiliti
 
 Source timestamps are not collection timestamps. Missing source dates stay missing. Existing PostgreSQL check-cache eviction is not an archive policy or a substitute for confirming permitted retention.
 
+BE-05 reuses RIPEstat's abuse-contact-finder only when fresh authoritative RDAP has no usable abuse contact. It uses the same shared limits and source-access conditions; it does not establish a new redistribution grant. Contacts retain their source and resource scope and are explicitly unverified. See the [registration contract](registration.md).
 
 ## Candidate sources and explicit blockers
 

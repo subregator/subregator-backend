@@ -56,6 +56,15 @@ func metricObservation(m Metric, target Target, q Query, now time.Time) Observat
 	if m.Status != "ok" && m.Status != "stale" || m.ObservedAt == nil {
 		return o
 	}
+	if m.Registration != nil {
+		o.Completeness = m.Registration.Completeness
+		if len(m.Registration.Records) == 1 {
+			scope := m.Registration.Records[0].Range
+			o.Scope.Resource = scope.Resource
+			o.Scope.Relation = scope.Relation
+		}
+		return o
+	}
 	var data struct {
 		Resource string `json:"resource"`
 		Prefix   string `json:"prefix"`

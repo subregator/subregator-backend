@@ -139,14 +139,6 @@ func TestNetworkCollectionStatusMCP(t *testing.T) {
 }
 
 func TestObservationAndCollectionOpenAPIContracts(t *testing.T) {
-	var doc struct {
-		Components struct {
-			Schemas map[string]json.RawMessage `json:"schemas"`
-		} `json:"components"`
-	}
-	if err := json.Unmarshal(openAPI, &doc); err != nil {
-		t.Fatal(err)
-	}
 	s := intelligence.New(nil, false, "", 120)
 	a := intelligence.NewAutomatic(s)
 	report, err := s.Cached(context.Background(), intelligence.Query{Resource: "2001:4860:4860::/48", Checks: []string{"registration", "ipinfo_lite"}})
@@ -162,21 +154,34 @@ func TestObservationAndCollectionOpenAPIContracts(t *testing.T) {
 		{"CollectionStatus", a.Status(store(t, 1))},
 		{"ChecksResult", map[string]any{"items": intelligence.Capabilities()}},
 	} {
-		root, _ := json.Marshal(map[string]any{"$ref": "#/$defs/" + tc.name, "$defs": doc.Components.Schemas})
-		root = []byte(strings.ReplaceAll(string(root), "#/components/schemas/", "#/$defs/"))
-		var schema jsonschema.Schema
-		if err := json.Unmarshal(root, &schema); err != nil {
-			t.Fatal(err)
-		}
-		resolved, err := schema.Resolve(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		payload, _ := json.Marshal(tc.value)
-		var value any
-		json.Unmarshal(payload, &value)
-		if err := resolved.Validate(value); err != nil {
-			t.Fatalf("%s response violates OpenAPI: %v", tc.name, err)
-		}
+		validateOpenAPI(t, tc.name, tc.value)
+	}
+}
+
+func validateOpenAPI(t *testing.T, name string, instance any) {
+	t.Helper()
+	var doc struct {
+		Components struct {
+			Schemas map[string]json.RawMessage `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(openAPI, &doc); err != nil {
+		t.Fatal(err)
+	}
+	root, _ := json.Marshal(map[string]any{"$ref": "#/$defs/" + name, "$defs": doc.Components.Schemas})
+	root = []byte(strings.ReplaceAll(string(root), "#/components/schemas/", "#/$defs/"))
+	var schema jsonschema.Schema
+	if err := json.Unmarshal(root, &schema); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := schema.Resolve(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(instance)
+	var value any
+	json.Unmarshal(payload, &value)
+	if err := resolved.Validate(value); err != nil {
+		t.Fatalf("%s response violates OpenAPI: %v", name, err)
 	}
 }
