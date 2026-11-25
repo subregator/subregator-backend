@@ -67,18 +67,7 @@ func (s *Service) archiveMetric(ctx context.Context, target Target, q Query, m M
 		state = states
 	case m.Registration != nil:
 		evidence = m.Registration
-		records := slices.Clone(m.Registration.Records)
-		for i := range records {
-			r := &records[i]
-			r.Statuses = orderedRegistryValues(r.Statuses)
-			r.Entities = slices.Clone(r.Entities)
-			for j := range r.Entities {
-				r.Entities[j].Statuses = orderedRegistryValues(r.Entities[j].Statuses)
-			}
-			r.Entities = orderedRegistryValues(r.Entities)
-			r.Events = orderedRegistryValues(r.Events)
-		}
-		state = orderedRegistryValues(records)
+		state = RegistryState(m.Registration.Records)
 	}
 	if m.BGP != nil && m.BGP.QueryTime != nil {
 		r.SourceUpdatedAt = m.BGP.QueryTime
@@ -136,4 +125,20 @@ func orderedRegistryValues[T any](values []T) []T {
 	}
 	slices.SortFunc(values, compare)
 	return slices.CompactFunc(values, func(a, b T) bool { return compare(a, b) == 0 })
+}
+
+func RegistryState(records []RegistryRecord) json.RawMessage {
+	records = slices.Clone(records)
+	for i := range records {
+		r := &records[i]
+		r.Statuses = orderedRegistryValues(r.Statuses)
+		r.Entities = slices.Clone(r.Entities)
+		for j := range r.Entities {
+			r.Entities[j].Statuses = orderedRegistryValues(r.Entities[j].Statuses)
+		}
+		r.Entities = orderedRegistryValues(r.Entities)
+		r.Events = orderedRegistryValues(r.Events)
+	}
+	out, _ := json.Marshal(orderedRegistryValues(records))
+	return out
 }

@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"testing"
 	"time"
@@ -168,6 +169,10 @@ func TestObservationTransitionsAndScopeIsolation(t *testing.T) {
 	for check, event := range map[string]string{"prefix_overview": "bgp_origins_changed", "rpki": "rpki_transition", "registration": "registry_changed", "rdap": "registry_changed"} {
 		a := archiveFixture("1.1.1.0/24", check, `{"value":"before"}`, at)
 		b := archiveFixture(a.Resource, check, `{"value":"after"}`, at.Add(2*time.Hour))
+		if check == "rdap" || check == "registration" {
+			a.State = json.RawMessage(`[{"name":"before"}]`)
+			b.State = json.RawMessage(`[{"name":"after"}]`)
+		}
 		for _, r := range []intelligence.ArchivedObservation{a, b} {
 			if err := d.SaveObservation(ctx, r); err != nil {
 				t.Fatal(err)
@@ -243,5 +248,60 @@ func TestObservationFailedReplayIsIdempotent(t *testing.T) {
 	}
 	if len(out.Items) != 1 {
 		t.Fatalf("one failed attempt replay created %d rows", len(out.Items))
+	}
+}
+
+func TestObservationMigrationPreservesVersionOneState(t *testing.T) {
+	dsn := testdb.URL(t)
+	legacy, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = legacy.Exec(`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY); INSERT INTO schema_migrations VALUES(1); CREATE TABLE state(id SMALLINT PRIMARY KEY CHECK(id=1),payload BYTEA NOT NULL,tracking_started BIGINT NOT NULL); INSERT INTO state VALUES(1,'{"version":1}',1234)`)
+	legacy.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	state, found, err := d.Load()
+	if err != nil || !found || state.Version != 1 {
+		t.Fatal(err, found, state)
+	}
+	var version int
+	var started int64
+	if err = d.sql.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 2 {
+		t.Fatal(err, version)
+	}
+	if err = d.sql.QueryRow(`SELECT tracking_started FROM state WHERE id=1`).Scan(&started); err != nil || started != 1234 {
+		t.Fatal(err, started)
+	}
+	out, err := d.Observations(context.Background(), "1.1.1.0/24", 0, 1)
+	if err != nil || len(out.Items) != 0 {
+		t.Fatal("migration invented history", err, out)
+	}
+}
+
+func TestObservationLegacyRegistryStateUsesSameOrdering(t *testing.T) {
+	d, _ := setup(t)
+	ctx := context.Background()
+	at := time.Now().UTC().Add(-time.Hour)
+	a := archiveFixture("1.1.1.0/24", "rdap", `[{"handle":"NET","statuses":["validated","active"],"entities":[],"events":[]}]`, at)
+	if err := d.SaveObservation(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	b := archiveFixture(a.Resource, a.Check, `[{"handle":"NET","statuses":["active","validated"],"entities":[],"events":[]}]`, at.Add(time.Minute))
+	if err := d.SaveObservation(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	out, err := d.Observations(ctx, a.Resource, 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 2 || out.Items[1].Event != "observation" || out.Items[1].FirstSeen == nil || !out.Items[1].FirstSeen.Equal(at) {
+		t.Fatalf("legacy ordering caused false registry change: %+v", out)
 	}
 }

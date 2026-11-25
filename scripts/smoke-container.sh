@@ -94,6 +94,9 @@ assert market["current"]["total"] == 1
 assert market["current"]["items"][0]["relation"] == "exact"
 assert len(market["history"]["items"]) == 1
 assert market["polls"]["items"][0]["complete"]
+with urllib.request.urlopen(base + "/api/v1/network/history?resource=1.1.1.0/24", timeout=2) as response:
+    assert json.load(response)["items"] == []
+
 def rpc(payload, version=None):
     headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
     if version:
@@ -109,7 +112,10 @@ result = rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"nam
 assert result["result"]["structuredContent"]["total"] == 1
 market_rpc = rpc({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "subnet_market", "arguments": {"filters": {"resource": "192.0.2.0/24"}}}}, initialized["result"]["protocolVersion"])
 assert market_rpc["result"]["structuredContent"]["current"]["total"] == 1
-print("Non-root read-only container: feed, durable history, subnet market, REST and MCP passed")
+archive = rpc({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "network_history", "arguments": {"filters": {"resource": "1.1.1.0/24"}}}}, initialized["result"]["protocolVersion"])
+assert archive["result"]["structuredContent"]["items"] == []
+print("Non-root read-only container: feed, durable history, REST/MCP and default-off check archive passed")
+
 import concurrent.futures, urllib.error
 payload = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "network_checks", "arguments": {}}}).encode()
 def burst(index):

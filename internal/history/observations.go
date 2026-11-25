@@ -110,7 +110,18 @@ func (d *DB) SaveObservation(ctx context.Context, r intelligence.ArchivedObserva
 					return err
 				}
 				r.PreviousSeen = baseline.ObservedAt
-				if bytes.Equal(r.State, baselineState) {
+				sameState := bytes.Equal(r.State, baselineState)
+				if r.Check == "registration" || r.Check == "rdap" {
+					var currentRecords, previousRecords []intelligence.RegistryRecord
+					if err = json.Unmarshal(r.State, &currentRecords); err != nil {
+						return err
+					}
+					if err = json.Unmarshal(baselineState, &previousRecords); err != nil {
+						return err
+					}
+					sameState = bytes.Equal(intelligence.RegistryState(currentRecords), intelligence.RegistryState(previousRecords))
+				}
+				if sameState {
 					r.FirstSeen = baseline.FirstSeen
 				} else {
 					switch r.Check {
