@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/subregator/subregator-backend/internal/catalog"
 	"github.com/subregator/subregator-backend/internal/history"
 	"github.com/subregator/subregator-backend/internal/intelligence"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func historicalHandler(t *testing.T) (http.Handler, *catalog.Store, *history.DB) {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/subregator/subregator-backend/internal/catalog"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/subregator/subregator-backend/internal/catalog"
 )
 
 const writerLock int64 = 1398096466

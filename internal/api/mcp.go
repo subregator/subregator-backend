@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/subregator/subregator-backend/internal/intelligence"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/subregator/subregator-backend/internal/intelligence"
 )
 
 type filterInput struct {
