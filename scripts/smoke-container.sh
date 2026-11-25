@@ -88,6 +88,12 @@ assert listing["active"] and listing["appearances"] == 1
 with urllib.request.urlopen(base + "/api/v1/resources", timeout=2) as response:
     resources = json.load(response)
 assert resources["items"][0]["provider_ids"] == ["onie"]
+with urllib.request.urlopen(base + "/api/v1/market?resource=192.0.2.0/24", timeout=2) as response:
+    market = json.load(response)
+assert market["current"]["total"] == 1
+assert market["current"]["items"][0]["relation"] == "exact"
+assert len(market["history"]["items"]) == 1
+assert market["polls"]["items"][0]["complete"]
 def rpc(payload, version=None):
     headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
     if version:
@@ -101,7 +107,9 @@ def rpc(payload, version=None):
 initialized = rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "container-smoke", "version": "1.0.0"}}})
 result = rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "search_offers", "arguments": {"filters": {"limit": "1"}}}}, initialized["result"]["protocolVersion"])
 assert result["result"]["structuredContent"]["total"] == 1
-print("Non-root read-only container: feed, durable history, REST and MCP passed")
+market_rpc = rpc({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "subnet_market", "arguments": {"filters": {"resource": "192.0.2.0/24"}}}}, initialized["result"]["protocolVersion"])
+assert market_rpc["result"]["structuredContent"]["current"]["total"] == 1
+print("Non-root read-only container: feed, durable history, subnet market, REST and MCP passed")
 import concurrent.futures, urllib.error
 payload = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "network_checks", "arguments": {}}}).encode()
 def burst(index):

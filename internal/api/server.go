@@ -37,6 +37,10 @@ func Handler(store *catalog.Store, origin string, extras ...Services) http.Handl
 		respond(w, r, result, e)
 	})
 	mux.HandleFunc("GET /api/v1/providers", func(w http.ResponseWriter, r *http.Request) { respond(w, r, service.providers(), nil) })
+	mux.HandleFunc("GET /api/v1/market", func(w http.ResponseWriter, r *http.Request) {
+		result, e := service.market(r.Context(), r.URL.Query())
+		respond(w, r, result, e)
+	})
 	mux.HandleFunc("GET /api/v1/history", func(w http.ResponseWriter, r *http.Request) {
 		result, e := service.events(r.Context(), r.URL.Query())
 		respond(w, r, result, e)
