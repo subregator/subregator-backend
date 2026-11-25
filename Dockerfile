@@ -19,10 +19,12 @@ ARG REVISION=unknown
 LABEL org.opencontainers.image.title="Subregator Backend" \
       org.opencontainers.image.description="Read-only IP resource comparison API" \
       org.opencontainers.image.source="https://github.com/subregator/subregator-backend" \
+      org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version=$VERSION \
       org.opencontainers.image.revision=$REVISION
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /subregator /subregator
+COPY LICENSE /LICENSE
 COPY THIRD_PARTY_NOTICES.txt /THIRD_PARTY_NOTICES.txt
 COPY --from=build --chown=65532:65532 /data /var/lib/subregator
 ENV SUBREGATOR_ADDR=0.0.0.0:8080 \
