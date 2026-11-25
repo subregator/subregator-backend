@@ -1043,6 +1043,61 @@
           }
         }
       }
+    },
+    "/api/v1/network/status": {
+      "get": {
+        "summary": "Read aggregate automatic collection health without triggering checks",
+        "responses": {
+          "200": {
+            "description": "Aggregate coverage and process counters; no external requests or database reads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionStatus"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Process-wide request admission limit; retry with backoff",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Automatic collector is not configured, or request admission capacity is exhausted",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Minimum seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2083,7 +2138,14 @@
           "error": {
             "type": "string"
           },
-          "data": {}
+          "data": {},
+          "observation": {
+            "$ref": "#/components/schemas/Observation"
+          },
+          "source_updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
         "required": [
           "name",
@@ -2093,7 +2155,8 @@
           "observed_at",
           "expires_at",
           "cached",
-          "data"
+          "data",
+          "observation"
         ],
         "additionalProperties": false
       },
@@ -2150,6 +2213,10 @@
           },
           "free_token_required": {
             "type": "boolean"
+          },
+          "automatic": {
+            "type": "boolean",
+            "description": "Whether the automatic worker collects this metric for eligible published prefixes. DROP is a separate automatic offer check."
           }
         },
         "required": [
@@ -2159,7 +2226,8 @@
           "coverage",
           "cache_ttl_seconds",
           "resource_kinds",
-          "free_token_required"
+          "free_token_required",
+          "automatic"
         ],
         "additionalProperties": false
       },
@@ -2244,6 +2312,9 @@
           },
           "copyright": {
             "type": "string"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation"
           }
         },
         "required": [
@@ -2253,7 +2324,8 @@
           "expires_at",
           "source",
           "coverage",
-          "reason"
+          "reason",
+          "observation"
         ]
       },
       "OfferChecks": {
@@ -2283,6 +2355,277 @@
           "semantics"
         ],
         "description": "Automatically collected source-scoped results for a published prefix. Reading offers never triggers a check. Pending, stale and unavailable results are not passing checks. Omitted for withheld prefixes."
+      },
+      "ObservationScope": {
+        "type": "object",
+        "properties": {
+          "requested": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ip",
+              "prefix",
+              "asn"
+            ]
+          },
+          "resource": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "exact",
+              "covering",
+              "overlap",
+              "origin_asns"
+            ]
+          },
+          "asn": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "requested",
+          "kind",
+          "relation"
+        ],
+        "additionalProperties": false
+      },
+      "Observation": {
+        "type": "object",
+        "properties": {
+          "collection_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "succeeded",
+              "failed",
+              "disabled",
+              "not_configured",
+              "not_applicable",
+              "no_data",
+              "rate_limited",
+              "unknown"
+            ]
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "stale",
+              "unknown"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "unknown"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ObservationScope"
+          },
+          "failure_reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_status",
+          "freshness",
+          "completeness",
+          "scope"
+        ],
+        "additionalProperties": false,
+        "description": "Additive evidence envelope. Collection success is not a passing finding. Completeness is bounded to the named source and scope; unknown never establishes complete coverage."
+      },
+      "CheckCoverage": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "freshness": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "oldest_age_seconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "source",
+          "collection",
+          "freshness",
+          "oldest_age_seconds"
+        ],
+        "additionalProperties": false
+      },
+      "UpstreamStats": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rate_limited": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "auth_failures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "no_data": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "source",
+          "requests",
+          "failures",
+          "rate_limited",
+          "auth_failures",
+          "no_data",
+          "duration_ms"
+        ],
+        "additionalProperties": false
+      },
+      "CollectionStatus": {
+        "type": "object",
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "process_started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "eligible_prefixes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "due_prefixes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unscheduled_prefixes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "oldest_due_seconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckCoverage"
+            }
+          },
+          "upstreams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpstreamStats"
+            }
+          },
+          "request_budget_rpm": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "budget_denials": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "budget_waits": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "budget_wait_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "persistence_failures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "scheduler_sweep_floor_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "semantics": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "generated_at",
+          "process_started_at",
+          "eligible_prefixes",
+          "due_prefixes",
+          "unscheduled_prefixes",
+          "oldest_due_seconds",
+          "checks",
+          "upstreams",
+          "request_budget_rpm",
+          "budget_denials",
+          "budget_waits",
+          "budget_wait_seconds",
+          "persistence_failures",
+          "scheduler_sweep_floor_seconds",
+          "semantics"
+        ],
+        "additionalProperties": false,
+        "description": "Process-local collection health. Counters reset on restart; coverage starts pending until restored/recollected. Scheduler floor ignores upstream latency, budget waits and shared quotas; it is not a freshness promise. No resource IDs, tokens or upstream URL labels are returned."
       }
     }
   }

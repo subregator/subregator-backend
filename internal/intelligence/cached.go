@@ -14,11 +14,13 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 	}
 	report := Report{Resource: target, Metrics: []Metric{}, Semantics: "source_observations_not_ownership_or_reachability_guarantees"}
 	for _, name := range q.Checks {
-		d := definitions[name]
-		m := Metric{Name: name, Status: "pending", Source: d.Source, Coverage: d.Coverage, Data: json.RawMessage("null")}
+		m := s.initialMetric(target, name)
 		key := metricKey(target, q, name)
-		if s.cache != nil {
+		if s.cache != nil && m.Status == "pending" {
 			b, expires, found, err := s.cache.CacheGet(ctx, key)
+			if err != nil {
+				s.persistenceFailed()
+			}
 			var cached Metric
 			if err == nil && found && json.Unmarshal(b, &cached) == nil {
 				m = cached
@@ -28,6 +30,10 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 				}
 			}
 		}
+		if m.Status == "pending" && !s.network {
+			m.Status = "disabled"
+		}
+		m.Observation = metricObservation(m, target, q, time.Now())
 		report.Metrics = append(report.Metrics, m)
 		if m.Status != "ok" {
 			report.Partial = true

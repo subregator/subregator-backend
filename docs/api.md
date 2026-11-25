@@ -112,3 +112,9 @@ The public API is read-only and does not provide administrative feed imports or 
 ## Scope
 
 This release remains a single-writer catalogue and history service. There is no account system, checkout, purchase automation, currency conversion or distributed scheduler. Current listing queries stay in memory; PostgreSQL stores durable observations and a bounded external-result cache. Multiple ingestion writers or independent API replicas require coordinated scheduling and cache refresh before enabling them; sharing PostgreSQL alone does not synchronize each process's in-memory catalogue.
+
+## Network observation metadata and collection status
+
+Every network metric and embedded offer check includes an additive `observation` envelope with collection status, freshness, completeness and typed scope. See the [observation contract](check-results.md) and [source-access inventory](source-access.md). Older cached results acquire the envelope locally on read.
+
+`GET /api/v1/network/status` and MCP `network_status` expose process-local aggregate check coverage, observation age, scheduling lag, source request counts and durations, budget waits and persistence failures. Reads use in-memory metadata without upstream requests or per-prefix identifiers. Counters reset on restart; a missing collector returns 503.

@@ -61,6 +61,10 @@ func (s *service) mcpHandler() http.Handler {
 	mcp.AddTool(server, tool("network_checks", "List available free checks, input types, cache TTLs and source coverage limitations"), func(_ context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
 		return nil, map[string]any{"items": intelligence.Capabilities()}, nil
 	})
+	mcp.AddTool(server, tool("network_status", "Read aggregate process-local check coverage, freshness, scheduling lag and upstream request counters; never trigger collection"), func(_ context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
+		r, e := s.collectionStatus()
+		return nil, r, e
+	})
 	mcp.AddTool(server, tool("get_api_schema", "Get the complete public REST API contract and filter definitions"), func(_ context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
 		return nil, schema(), nil
 	})

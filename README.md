@@ -66,6 +66,8 @@ make check build
 
 Bug reports and pull requests are welcome. Include steps to reproduce a bug; for a new provider, include its public feed or API details and display terms. Keep changes focused and run the relevant checks before opening a PR.
 
+Follow the [backend roadmap issues](https://github.com/subregator/subregator-backend/issues/2) for subnet checks, provider integrations, price history and network observations, with dependencies and acceptance criteria.
+
 ## License
 
 [MIT](LICENSE). Third-party software notices are listed in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt). Provider data remains subject to its source terms.

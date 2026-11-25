@@ -62,6 +62,42 @@ func TestTargetValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestCachedConfigurationStates(t *testing.T) {
+	s := New(nil, false, "", 120)
+	for _, tc := range []struct{ resource, check, status string }{
+		{"1.1.1.1", "registration", "disabled"},
+		{"1.1.1.1", "ipinfo_lite", "not_configured"},
+		{"AS13335", "prefix_overview", "not_applicable"},
+	} {
+		r, err := s.Cached(context.Background(), Query{Resource: tc.resource, Checks: []string{tc.check}})
+		if err != nil || r.Metrics[0].Status != tc.status {
+			t.Fatalf("%s: want %s, got %+v (%v)", tc.check, tc.status, r, err)
+		}
+	}
+}
+
+func TestNetworkObservationEnvelope(t *testing.T) {
+	s := New(nil, true, "", 120)
+	r, err := s.Cached(context.Background(), Query{Resource: "1.1.1.0/24", Checks: []string{"registration"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(r.Metrics[0])
+	var fields map[string]json.RawMessage
+	json.Unmarshal(b, &fields)
+	var observation struct {
+		CollectionStatus string `json:"collection_status"`
+		Freshness        string `json:"freshness"`
+		Completeness     string `json:"completeness"`
+		Scope            struct {
+			Requested string `json:"requested"`
+		} `json:"scope"`
+	}
+	if json.Unmarshal(fields["observation"], &observation) != nil || observation.CollectionStatus != "pending" || observation.Freshness != "unknown" || observation.Completeness != "unknown" || observation.Scope.Requested != "1.1.1.0/24" {
+		t.Fatalf("missing honest observation envelope: %s", b)
+	}
+}
 func TestFreeSourceCachingAndFailureFallback(t *testing.T) {
 	var calls atomic.Int32
 	var failing atomic.Bool
