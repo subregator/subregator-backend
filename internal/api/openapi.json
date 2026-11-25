@@ -1098,6 +1098,191 @@
           }
         }
       }
+    },
+    "/api/v1/market": {
+      "get": {
+        "summary": "Compare observed subnet offers and exact-prefix price/lifecycle history",
+        "description": "Read-only PostgreSQL/catalogue projection. Current offers, historical provider associations, lifecycle/price events and provider inventory attempts remain separate. Current offers include every availability state and explicit freshness. Model/currency/term filters affect price projections; raw before/after lifecycle evidence is preserved, including transitions out of a filter. Separate current/history/poll cursors must each be consumed. Historical disclosure follows current provider policy; Peaktera history remains private, and current Peaktera offers still expire after one hour. Canonical CIDRs overlap only by containment or equality; no fourth non-nested CIDR overlap relation is invented. Disappearance is not a sale, multiple sellers do not establish common ownership or fraud, and no continuous price validity between observations is claimed.",
+        "parameters": [
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "description": "Required IPv4/IPv6 CIDR, canonicalized locally; no external work",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "description": "One known provider ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "listing_id",
+            "in": "query",
+            "required": false,
+            "description": "Stable listing ID; events retain changed resource and listing identities",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "description": "lease or purchase; applies to current offers and price projections",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "description": "One ISO currency; no conversion; applies to current offers and price projections",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "billing_months",
+            "in": "query",
+            "required": false,
+            "description": "Quoted billing term; applies to current offers and price projections",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1200
+            }
+          },
+          {
+            "name": "relation",
+            "in": "query",
+            "required": false,
+            "description": "Current offers only: exact (default), parent, child, or overlap (union of exact/parent/child); history and associations always remain exact",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "exact",
+                "parent",
+                "child",
+                "overlap"
+              ],
+              "default": "exact"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size independently applied to current offers, history events and provider polls",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Current-offer offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "required": false,
+            "description": "Current-offer snapshot; 409 if changed",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after_id",
+            "in": "query",
+            "required": false,
+            "description": "History-event keyset cursor",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "after_poll_id",
+            "in": "query",
+            "required": false,
+            "description": "Provider-poll keyset cursor",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Market observations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current catalogue snapshot changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "History query failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "History is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3687,6 +3872,280 @@
           "semantics"
         ],
         "additionalProperties": false
+      },
+      "QuoteCosts": {
+        "type": "object",
+        "required": [
+          "quote",
+          "first_period_total",
+          "renewal_total",
+          "first_period_unknowns",
+          "renewal_unknowns"
+        ],
+        "properties": {
+          "quote": {
+            "$ref": "#/components/schemas/Quote"
+          },
+          "first_period_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "renewal_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "first_period_unknowns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "renewal_unknowns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "description": "Totals for one quoted billing period, including all reported unconditional charges and taxes only when included. First period includes setup and deposit; renewal excludes once-only fees. Null plus reasons when unknown, conditional, mixed-currency or overflowing int64. Minimum term and refundable status remain in quote. No implied absence of unreported costs."
+      },
+      "MarketOffer": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Item"
+          },
+          {
+            "type": "object",
+            "required": [
+              "relation",
+              "price_scope",
+              "quote_costs"
+            ],
+            "properties": {
+              "relation": {
+                "type": "string",
+                "enum": [
+                  "exact",
+                  "parent",
+                  "child"
+                ]
+              },
+              "price_scope": {
+                "type": "string",
+                "description": "Actual offered prefix; quote totals always cover this scope, not necessarily the requested subnet"
+              },
+              "quote_costs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/QuoteCosts"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MarketCurrent": {
+        "type": "object",
+        "required": [
+          "snapshot",
+          "total",
+          "items",
+          "next_offset"
+        ],
+        "properties": {
+          "snapshot": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketOffer"
+            }
+          },
+          "next_offset": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "MarketEvent": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/HistoryEvent"
+          },
+          {
+            "type": "object",
+            "required": [
+              "before_prices",
+              "after_prices"
+            ],
+            "properties": {
+              "before_prices": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/QuoteCosts"
+                }
+              },
+              "after_prices": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/QuoteCosts"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MarketHistory": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_after_id",
+          "tracking_started_at"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketEvent"
+            }
+          },
+          "next_after_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tracking_started_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProviderAssociation": {
+        "type": "object",
+        "required": [
+          "provider_id",
+          "first_observed_at",
+          "last_observed_at"
+        ],
+        "properties": {
+          "provider_id": {
+            "type": "string"
+          },
+          "first_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "Historical provider association with the exact public prefix, independent of current listing presence. Not ownership."
+      },
+      "MarketPoll": {
+        "type": "object",
+        "required": [
+          "id",
+          "provider_id",
+          "observed_at",
+          "complete"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "description": "Provider inventory attempt, not proof that the requested prefix was offered at that time. Failed/incomplete attempts are coverage gaps; no raw error is exposed."
+      },
+      "MarketPollResult": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_after_id"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketPoll"
+            }
+          },
+          "next_after_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "MarketResult": {
+        "type": "object",
+        "required": [
+          "resource",
+          "address_count",
+          "current",
+          "historical_providers",
+          "history",
+          "polls",
+          "semantics"
+        ],
+        "properties": {
+          "resource": {
+            "type": "string"
+          },
+          "address_count": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "current": {
+            "$ref": "#/components/schemas/MarketCurrent"
+          },
+          "historical_providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderAssociation"
+            }
+          },
+          "history": {
+            "$ref": "#/components/schemas/MarketHistory"
+          },
+          "polls": {
+            "$ref": "#/components/schemas/MarketPollResult"
+          },
+          "semantics": {
+            "type": "string"
+          }
+        }
       }
     }
   }

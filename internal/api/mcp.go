@@ -46,6 +46,10 @@ func (s *service) mcpHandler() http.Handler {
 		r, e := s.listing(ctx, in.ID)
 		return nil, r, e
 	})
+	mcp.AddTool(server, tool("subnet_market", "Compare current observed offers by exact public subnet or explicit parent/child relation; read exact-prefix provider associations, listing/price changes and collection gaps without external requests; no ownership or sale inference"), func(ctx context.Context, _ *mcp.CallToolRequest, in filterInput) (*mcp.CallToolResult, any, error) {
+		r, e := s.market(ctx, values(in))
+		return nil, r, e
+	})
 	mcp.AddTool(server, tool("listing_history", "Read append-only listing events by resource, provider, listing, event type, time or cursor"), func(ctx context.Context, _ *mcp.CallToolRequest, in filterInput) (*mcp.CallToolResult, any, error) {
 		r, e := s.events(ctx, values(in))
 		return nil, r, e
