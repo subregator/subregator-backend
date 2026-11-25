@@ -3889,7 +3889,7 @@
           "first_period_total": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Money"
+                "$ref": "#/components/schemas/QuotedTotal"
               },
               {
                 "type": "null"
@@ -3899,7 +3899,7 @@
           "renewal_total": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Money"
+                "$ref": "#/components/schemas/QuotedTotal"
               },
               {
                 "type": "null"
@@ -3922,38 +3922,136 @@
         "description": "Totals for one quoted billing period, including all reported unconditional charges and taxes only when included. First period includes setup and deposit; renewal excludes once-only fees. Null plus reasons when unknown, conditional, mixed-currency or overflowing int64. Minimum term and refundable status remain in quote. No implied absence of unreported costs."
       },
       "MarketOffer": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Item"
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
           },
-          {
-            "type": "object",
-            "required": [
-              "relation",
-              "price_scope",
-              "quote_costs"
-            ],
-            "properties": {
-              "relation": {
+          "external_id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "lease",
+              "purchase"
+            ]
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "waitlist",
+              "upcoming",
+              "unavailable",
+              "unknown"
+            ]
+          },
+          "available_at": {
+            "anyOf": [
+              {
                 "type": "string",
-                "enum": [
-                  "exact",
-                  "parent",
-                  "child"
-                ]
+                "format": "date-time"
               },
-              "price_scope": {
-                "type": "string",
-                "description": "Actual offered prefix; quote totals always cover this scope, not necessarily the requested subnet"
-              },
-              "quote_costs": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/QuoteCosts"
-                }
+              {
+                "type": "null"
               }
+            ]
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "geography": {
+            "$ref": "#/components/schemas/Geography"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/Routing"
+          },
+          "quotes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Quote"
+            }
+          },
+          "terms": {
+            "$ref": "#/components/schemas/Terms"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "stale",
+              "unavailable",
+              "not_connected"
+            ]
+          },
+          "matching_quote_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checks": {
+            "$ref": "#/components/schemas/OfferChecks"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "parent",
+              "child"
+            ]
+          },
+          "price_scope": {
+            "type": "string",
+            "description": "Actual offered prefix; quote totals always cover this scope, not necessarily the requested subnet"
+          },
+          "quote_costs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuoteCosts"
             }
           }
+        },
+        "required": [
+          "external_id",
+          "provider_id",
+          "model",
+          "availability",
+          "resource",
+          "geography",
+          "quotes",
+          "url",
+          "id",
+          "observed_at",
+          "freshness",
+          "matching_quote_ids",
+          "relation",
+          "price_scope",
+          "quote_costs"
         ]
       },
       "MarketCurrent": {
@@ -3987,32 +4085,96 @@
         }
       },
       "MarketEvent": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/HistoryEvent"
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
           },
-          {
-            "type": "object",
-            "required": [
-              "before_prices",
-              "after_prices"
-            ],
-            "properties": {
-              "before_prices": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/QuoteCosts"
-                }
+          "listing_id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "next_resource_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "listed",
+              "changed",
+              "removed",
+              "relisted",
+              "resource_changed"
+            ]
+          },
+          "resource_reappeared": {
+            "type": "boolean"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Offer"
               },
-              "after_prices": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/QuoteCosts"
-                }
+              {
+                "type": "null"
               }
+            ]
+          },
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Offer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "changed_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "before_prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuoteCosts"
+            }
+          },
+          "after_prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuoteCosts"
             }
           }
-        ]
+        },
+        "required": [
+          "id",
+          "listing_id",
+          "provider_id",
+          "resource_id",
+          "next_resource_id",
+          "type",
+          "resource_reappeared",
+          "observed_at",
+          "before",
+          "after",
+          "changed_fields",
+          "before_prices",
+          "after_prices"
+        ],
+        "additionalProperties": false
       },
       "MarketHistory": {
         "type": "object",
@@ -4146,6 +4308,32 @@
             "type": "string"
           }
         }
+      },
+      "QuotedTotal": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "minor_unit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6
+          }
+        },
+        "required": [
+          "currency",
+          "amount_minor",
+          "minor_unit"
+        ],
+        "description": "Calculated quoted charges in source currency with aligned minor-unit scale; exact nonnegative int64, distinct from the per-source-price bound."
       }
     }
   }
