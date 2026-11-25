@@ -11,26 +11,28 @@ import (
 )
 
 type Check struct {
-	Abuse           *AbuseObservation `json:"abuse,omitempty"`
-	IRR             *IRRExplanation   `json:"irr,omitempty"`
-	BGP             *BGPExplanation   `json:"bgp,omitempty"`
-	RPKI            *RPKIExplanation  `json:"rpki,omitempty"`
-	Observation     Observation       `json:"observation"`
-	Status          string            `json:"status"`
-	Freshness       string            `json:"freshness"`
-	ObservedAt      *time.Time        `json:"observed_at"`
-	ExpiresAt       *time.Time        `json:"expires_at"`
-	Source          string            `json:"source"`
-	SourceURL       string            `json:"source_url,omitempty"`
-	Coverage        string            `json:"coverage"`
-	Reason          string            `json:"reason"`
-	Origins         []uint32          `json:"origins,omitempty"`
-	Matches         []DropMatch       `json:"matches,omitempty"`
-	SourceUpdatedAt *time.Time        `json:"source_updated_at,omitempty"`
-	Copyright       string            `json:"copyright,omitempty"`
+	Blocklists      *BlocklistObservation `json:"blocklists,omitempty"`
+	Abuse           *AbuseObservation     `json:"abuse,omitempty"`
+	IRR             *IRRExplanation       `json:"irr,omitempty"`
+	BGP             *BGPExplanation       `json:"bgp,omitempty"`
+	RPKI            *RPKIExplanation      `json:"rpki,omitempty"`
+	Observation     Observation           `json:"observation"`
+	Status          string                `json:"status"`
+	Freshness       string                `json:"freshness"`
+	ObservedAt      *time.Time            `json:"observed_at"`
+	ExpiresAt       *time.Time            `json:"expires_at"`
+	Source          string                `json:"source"`
+	SourceURL       string                `json:"source_url,omitempty"`
+	Coverage        string                `json:"coverage"`
+	Reason          string                `json:"reason"`
+	Origins         []uint32              `json:"origins,omitempty"`
+	Matches         []DropMatch           `json:"matches,omitempty"`
+	SourceUpdatedAt *time.Time            `json:"source_updated_at,omitempty"`
+	Copyright       string                `json:"copyright,omitempty"`
 }
 
 type OfferChecks struct {
+	ZEN       *Check `json:"zen,omitempty"`
 	Abuse     *Check `json:"abuse,omitempty"`
 	IRR       *Check `json:"irr,omitempty"`
 	Resource  string `json:"resource"`
@@ -40,7 +42,7 @@ type OfferChecks struct {
 	Semantics string `json:"semantics"`
 }
 
-var automaticChecks = []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "irr", "abuse"}
+var automaticChecks = []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "irr", "abuse", "spamhaus_zen"}
 
 // Automatic is written only by Run; readers never schedule upstream work.
 type Automatic struct {
@@ -81,6 +83,17 @@ func (a *Automatic) Get(resource string) OfferChecks {
 		r.Abuse = &check
 	}
 	now := time.Now()
+	if r.ZEN != nil {
+		c := *r.ZEN
+		r.ZEN = &c
+	}
+	if !a.service.spamhausConfigured() {
+		r.ZEN = &Check{Status: "not_configured", Freshness: "unknown", Source: "Spamhaus ZEN", Coverage: definitions["spamhaus_zen"].Coverage, Reason: "Licensed product access and public-use approval required"}
+	}
+	if r.ZEN == nil {
+		c := unknownCheck()
+		r.ZEN = &c
+	}
 	if !a.service.abuseConfigured() {
 		r.Abuse = &Check{Status: "not_configured", Freshness: "unknown", Source: "AbuseIPDB", Coverage: definitions["abuse"].Coverage, Reason: "AbuseIPDB requires an approved account, key, quota and public display/retention rights"}
 	}
@@ -95,7 +108,7 @@ func (a *Automatic) Get(resource string) OfferChecks {
 		irr := unknownCheck()
 		r.IRR = &irr
 	}
-	for _, c := range []*Check{&r.BGP, &r.RPKI, &r.Blocklist, r.IRR, r.Abuse} {
+	for _, c := range []*Check{&r.BGP, &r.RPKI, &r.Blocklist, r.IRR, r.Abuse, r.ZEN} {
 		if c.Freshness == "fresh" && (c.ExpiresAt == nil || !now.Before(*c.ExpiresAt)) {
 			c.Freshness = "stale"
 		}
@@ -112,6 +125,13 @@ func (a *Automatic) Get(resource string) OfferChecks {
 		r.Abuse.Abuse = &detail
 		r.Abuse.Status = "partial"
 	}
+	if r.ZEN.Blocklists != nil && r.ZEN.Freshness != "fresh" {
+		d := *r.ZEN.Blocklists
+		d.Status = "partial"
+		r.ZEN.Blocklists = &d
+		r.ZEN.Status = "partial"
+	}
+	r.ZEN.Observation = checkObservation(*r.ZEN, resource, "spamhaus_zen", now)
 	r.Abuse.Observation = checkObservation(*r.Abuse, resource, "abuse", now)
 	r.IRR.Observation = checkObservation(*r.IRR, resource, "irr", now)
 	r.BGP.Observation = checkObservation(r.BGP, resource, "prefix_overview", now)
@@ -169,7 +189,8 @@ func (a *Automatic) publish(ctx context.Context, key string, r Report, blocklist
 	}
 	irr := summarizeIRR(r, time.Now())
 	abuse := summarizeAbuse(r, time.Now())
-	report := OfferChecks{Abuse: &abuse, IRR: &irr, Resource: key, BGP: bgp, RPKI: rpki, Blocklist: blocklist, Semantics: "source_scoped_observations_not_safety_or_reputation"}
+	zen := summarizeBlocklists(r, time.Now())
+	report := OfferChecks{ZEN: &zen, Abuse: &abuse, IRR: &irr, Resource: key, BGP: bgp, RPKI: rpki, Blocklist: blocklist, Semantics: "source_scoped_observations_not_safety_or_reputation"}
 	due := time.Now().Add(5 * time.Minute)
 	for _, m := range r.Metrics {
 		if m.Status != "ok" || m.ExpiresAt == nil {

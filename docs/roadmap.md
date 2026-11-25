@@ -223,3 +223,9 @@ Reviewed during planning on 2026-11-25. Recheck capability and terms before enab
 | OONI | [Explorer](https://explorer.ooni.org/) | Deferred research on target- and network-specific censorship evidence |
 
 No new source was enabled while writing this roadmap. Authenticated pilots, current production coverage, contractual approvals and frontend behavior remain unverified.
+
+### BE-09 local adapter and outstanding pilot — 2026-11-25
+
+The optional Spamhaus HTTPS ZEN adapter adds independent SBL/XBL/PBL findings, explicit queried-IP scope, partial prefix sampling, source access/errors/quota states and cached REST/MCP/offer contracts. DROP remains a separate complete overlap dataset with its existing daily attempt reservation; exact duplicate source records are rejected. PostgreSQL JSON persistence, configuration and documentation are updated together without a dependency or migration.
+
+Licensed product access, quota and public-display/retention rights are unconfirmed. The authenticated pilot acceptance criterion in #11 remains open; the source defaults off. Whole-subnet SBL/XBL/PBL coverage is not claimed. SSLBL's probed IP CSV was deprecated and was not integrated. See [blocklist contract](blocklists.md). BE-10 remains the next implementation item after this local slice, with frontend deferred and delivery approval still required.

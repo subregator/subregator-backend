@@ -233,7 +233,7 @@ func (a *Automatic) restoreSchedule(ctx context.Context, key string, names []str
 		if !a.service.network {
 			a.jobs[key][m.Name] = scheduledCheck{}
 		}
-		if m.Name == "prefix_overview" || m.Name == "rpki" || m.Name == "routing_status" || m.Name == "irr" || m.Name == "abuse" {
+		if m.Name == "prefix_overview" || m.Name == "rpki" || m.Name == "routing_status" || m.Name == "irr" || m.Name == "abuse" || m.Name == "spamhaus_zen" {
 			a.evidence[key][m.Name] = compactEvidence(m)
 		}
 	}
@@ -257,7 +257,7 @@ func (a *Automatic) completeCheck(ctx context.Context, result checkResult) {
 		jobs[result.Name] = scheduledCheck{Next: result.Next}
 	} else {
 		jobs[result.Name] = nextCheck(result.Metric, jobs[result.Name], time.Now())
-		if result.Name == "prefix_overview" || result.Name == "rpki" || result.Name == "routing_status" || result.Name == "irr" || result.Name == "abuse" {
+		if result.Name == "prefix_overview" || result.Name == "rpki" || result.Name == "routing_status" || result.Name == "irr" || result.Name == "abuse" || result.Name == "spamhaus_zen" {
 			a.evidence[result.Key][result.Name] = compactEvidence(result.Metric)
 		}
 	}
@@ -302,11 +302,12 @@ func (a *Automatic) syncDue(key string) {
 }
 
 func compactEvidence(m Metric) Metric {
+	m.Blocklists = nil
 	m.Abuse = nil
 	m.IRR = nil
 	m.BGP = nil
 	m.RPKI = nil
-	if m.Name == "irr" || m.Name == "abuse" {
+	if m.Name == "irr" || m.Name == "abuse" || m.Name == "spamhaus_zen" {
 		return m
 	}
 	if m.Name == "prefix_overview" {
