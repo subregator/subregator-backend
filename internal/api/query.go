@@ -20,6 +20,7 @@ type Query struct {
 	MinPrice, MaxPrice                          *int64
 	Network                                     *netip.Prefix
 	FreshOnly                                   bool
+	IncludeStale                                bool
 	Limit, Offset                               int
 }
 
@@ -130,6 +131,7 @@ func ParseQuery(v url.Values) (Query, error) {
 			return q, errors.New("invalid fresh_only")
 		}
 		q.FreshOnly = s == "true"
+		q.IncludeStale = s == "false"
 	}
 	for key, dest := range map[string]**int64{"min_price_minor": &q.MinPrice, "max_price_minor": &q.MaxPrice} {
 		if s := v.Get(key); s != "" {
@@ -255,9 +257,11 @@ func Search(v *catalog.View, q Query, now time.Time) Result {
 	found := make([]candidate, 0, len(v.Offers))
 	fresh := map[string]string{}
 	maxAge := map[string]time.Duration{}
+	currentOnly := map[string]bool{}
 	for _, p := range v.Providers {
 		fresh[p.ID] = v.Freshness(p.ID, now)
-		maxAge[p.ID] = time.Duration(p.Policy.MinRefreshSeconds) * 2 * time.Second
+		maxAge[p.ID] = p.Policy.MaxCurrentAge()
+		currentOnly[p.ID] = p.Policy.MaxCurrentAgeSeconds > 0
 	}
 	facets := Facets{Providers: map[string]int{}, Countries: map[string]int{}, RIRs: map[string]int{}, Families: map[int]int{}, Models: map[string]int{}, Currencies: map[string]int{}}
 	for i, o := range v.Offers {
@@ -267,6 +271,9 @@ func Search(v *catalog.View, q Query, now time.Time) Result {
 		freshness := fresh[o.ProviderID]
 		if freshness == "fresh" && now.Sub(o.ObservedAt) > maxAge[o.ProviderID] {
 			freshness = "stale"
+		}
+		if currentOnly[o.ProviderID] && freshness != "fresh" && !q.IncludeStale {
+			continue
 		}
 		if !matchSet(q.Provider, o.ProviderID) || !matchSet(q.RIR, o.Resource.RIR) || !matchSet(q.Model, o.Model) || !matchSet(q.Availability, o.Availability) || q.Family != 0 && q.Family != o.Resource.Family || o.Resource.PrefixLength < q.MinPrefix || o.Resource.PrefixLength > q.MaxPrefix || q.Basis != "" && o.Geography.Basis != q.Basis || q.FreshOnly && freshness != "fresh" {
 			continue

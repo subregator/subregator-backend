@@ -249,12 +249,19 @@
     "id": "elisteka",
     "name": "ELISTEKA",
     "url": "https://elisteka.com/",
-    "description": "Interested in a read-only feed; no feed exists yet. Available, waitlist and confirmed upcoming stock must remain distinct.",
+    "description": "Official Subregator v1 feed of IPv4 and IPv6 lease products. IPv4 waitlist and available IPv6 products remain distinct; exact CIDRs are not published.",
     "policy": {
-      "publication": "pending",
+      "publication": "approved",
       "prefix_visibility": "hidden",
-      "min_refresh_seconds": 3600,
-      "conditions": []
+      "min_refresh_seconds": 86400,
+      "conditions": [
+        "Public unauthenticated production feed: https://elisteka.com/feeds/subregator.json",
+        "Poll at most once per day after 04:00 UTC.",
+        "Maximum current-data age is 36 hours; older snapshots are historical only.",
+        "Keep available, waitlist and upcoming offers distinct; no exact CIDRs."
+      ],
+      "refresh_after_utc": "04:05",
+      "max_current_age_seconds": 129600
     }
   },
   {
