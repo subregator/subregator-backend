@@ -210,3 +210,16 @@ func TestDNSBLMissingResultsHaveNoObservation(t *testing.T) {
 		t.Fatal("empty source results invented an observation")
 	}
 }
+
+func TestPrefixDNSBLDoesNotCountBudgetDenialsAsResponses(t *testing.T) {
+	s := mockService(t, func(*http.Request) (*http.Response, error) { return response(200, `{}`), nil })
+	s.rpm = 1
+	s.request(context.Background(), "https://stat.ripe.net/test", "")
+	r, e := s.Inspect(context.Background(), Query{Resource: "163.5.251.0/28", Checks: []string{"dns_blocklists"}})
+	var d struct {
+		Processed int `json:"processed_addresses"`
+	}
+	if e != nil || json.Unmarshal(r.Metrics[0].Data, &d) != nil || d.Processed != 0 {
+		t.Fatal("budget denial counted as source response", d.Processed, e)
+	}
+}

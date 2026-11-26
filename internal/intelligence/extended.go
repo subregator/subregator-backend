@@ -228,7 +228,7 @@ func (s *Service) prefixBlocklists(ctx context.Context, target Target) (Metric, 
 	complete := "complete"
 	checked, processed := 0, 0
 	for _, m := range results {
-		if m.SourceURL != "" || m.Error != "" {
+		if m.SourceURL != "" {
 			processed++
 		}
 		if m.Status != "ok" || m.Observation.Freshness != "fresh" || m.Observation.Completeness != "complete" {
