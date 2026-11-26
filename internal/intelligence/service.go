@@ -33,7 +33,7 @@ type Definition struct {
 var definitions = map[string]Definition{
 	"spamhaus_zen":         {Name: "spamhaus_zen", Source: "Spamhaus ZEN", Description: "Optional licensed SBL/XBL/PBL IP lookup; one first-address sample per prefix, never whole-subnet approval", Coverage: "One queried IP only; PBL is outbound mail policy, not abuse; source access and public use require approval", TTLSeconds: 3600, Kinds: []string{"ip", "prefix"}},
 	"abuse":                {Name: "abuse", Source: "AbuseIPDB", Description: "Optional source report summaries for IPv4 /24-/31 and IPv6 /120-/127, 30-day window; off until account and data use are approved", Coverage: "Source-reported addresses in the returned search range; not cleanliness, tenant attribution or resolution", TTLSeconds: 86400, Kinds: []string{"prefix"}},
-	"irr":                  {Name: "irr", Source: "IRRexplorer", Description: "IRR route/route6 objects compared with observed BGP origins; optional and off until source access is approved", Coverage: "IRRexplorer mirrored registries; not ownership or universal routing acceptance", TTLSeconds: 3600, Kinds: []string{"prefix"}},
+	"irr":                  {Name: "irr", Source: "IRRd", Description: "IRR route/route6 objects compared with observed BGP origins; optional and off until source publication is configured", Coverage: "Daily route/route6 mirror: RIPE, RIPE-NONAUTH, ARIN, APNIC, LACNIC, AFRINIC; RADB absent; not ownership or universal routing acceptance", TTLSeconds: 3600, Kinds: []string{"prefix"}},
 	"asn_rank":             {Name: "asn_rank", Source: "CAIDA ASRank", Description: "Free customer-cone topology ranking of origin ASNs", Coverage: "ASN topology rank, not subnet reputation, traffic or packet reachability", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
 	"prefix_overview":      {Name: "prefix_overview", Source: "RIPEstat", Description: "Announced prefix and origin ASNs", Coverage: "RIS collector observations; not a packet reachability test", TTLSeconds: 300, Kinds: []string{"ip", "prefix"}},
 	"routing_status":       {Name: "routing_status", Source: "RIPEstat", Description: "Visibility, first/last routing observations and related routes", Coverage: "RIS collectors only", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
@@ -96,6 +96,7 @@ type Service struct {
 	spamhausKey         string
 	abuseEnabled        bool
 	abuseKey            string
+	irrdURL             string
 	irrEnabled          bool
 	cache               Cache
 	client              *http.Client
@@ -123,15 +124,12 @@ type Service struct {
 var ErrNoData = errors.New("no observation in source coverage")
 var ErrBusy = errors.New("network inspection capacity reached; retry later")
 
-// EnableIRR must run before collection starts, after source use is approved.
-func (s *Service) EnableIRR() { s.irrEnabled = true }
-
 func New(cache Cache, network bool, freeToken string, rpm int) *Service {
 	if rpm < 1 {
 		rpm = 120
 	}
 	client := &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("upstream redirect refused") }}
-	return &Service{cache: cache, client: client, network: network, token: freeToken, rpm: rpm, flights: map[string]*call{}, httpSlots: make(chan struct{}, 4), inspectSlots: make(chan struct{}, 4), stats: map[string]UpstreamStats{}, startedAt: time.Now().UTC(), limits: map[string]*sourceLimit{}, budgetChanged: make(chan struct{})}
+	return &Service{irrdURL: DefaultIRRdURL, cache: cache, client: client, network: network, token: freeToken, rpm: rpm, flights: map[string]*call{}, httpSlots: make(chan struct{}, 4), inspectSlots: make(chan struct{}, 4), stats: map[string]UpstreamStats{}, startedAt: time.Now().UTC(), limits: map[string]*sourceLimit{}, budgetChanged: make(chan struct{})}
 }
 func (s *Service) Inspect(ctx context.Context, q Query) (Report, error) {
 	target, e := q.validate()
@@ -318,7 +316,7 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		s.mu.Lock()
 		now := time.Now()
 		if raw, ok := ctx.Value(sourceBudgetKey{}).(string); ok {
-			if limit := s.limits[sourceLimitKey(raw)]; limit != nil {
+			if limit := s.limits[s.sourceLimitKey(raw)]; limit != nil {
 				if deadline := limit.deadline.Load(); deadline != nil && deadline.After(now) {
 					s.mu.Unlock()
 					<-s.httpSlots
@@ -378,17 +376,22 @@ func (s *Service) request(ctx context.Context, rawURL, auth string) (json.RawMes
 	return s.readSource(ctx, rawURL, auth, 1<<20, true)
 }
 
-func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes int, requireJSON bool) (data json.RawMessage, err error) {
+func (s *Service) readSource(ctx context.Context, rawURL, auth string, maxBytes int, requireJSON bool) (json.RawMessage, error) {
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, errors.New("invalid upstream request")
+	}
+	return s.readRequest(ctx, r, auth, maxBytes, requireJSON)
+}
+
+func (s *Service) readRequest(ctx context.Context, r *http.Request, auth string, maxBytes int, requireJSON bool) (data json.RawMessage, err error) {
+	rawURL := r.URL.String()
 	if err := s.checkSourceLimit(ctx, rawURL); err != nil {
 		return nil, err
 	}
 	started := time.Now()
 	status := 0
 	defer func() { s.recordRequest(rawURL, status, err, time.Since(started)) }()
-	r, e := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if e != nil {
-		return nil, errors.New("invalid upstream request")
-	}
 	r.Header.Set("User-Agent", "Subregator/0.2 (+https://github.com/subregator/subregator-backend)")
 	r.Header.Set("Accept", "application/json, application/rdap+json")
 	if auth != "" {

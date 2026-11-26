@@ -39,7 +39,7 @@ func retryAfter(raw string, now time.Time) time.Time {
 }
 
 func (s *Service) sourceLimit(raw string) *sourceLimit {
-	name := sourceLimitKey(raw)
+	name := s.sourceLimitKey(raw)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.limits[name] == nil {
@@ -48,8 +48,8 @@ func (s *Service) sourceLimit(raw string) *sourceLimit {
 	return s.limits[name]
 }
 
-func sourceLimitKey(raw string) string {
-	name := upstreamName(raw)
+func (s *Service) sourceLimitKey(raw string) string {
+	name := s.upstreamName(raw)
 	if name == "RIR RDAP" {
 		u, _ := url.Parse(raw)
 		name += ":" + strings.ToLower(u.Hostname())
@@ -65,7 +65,7 @@ func (s *Service) saveSourceLimit(ctx context.Context, raw string, limit *source
 	b, _ := json.Marshal(struct {
 		Until time.Time `json:"until"`
 	}{limit.until})
-	err := s.cache.CachePut(ctx, "source_limit:"+sourceLimitKey(raw), b, limit.until)
+	err := s.cache.CachePut(ctx, "source_limit:"+s.sourceLimitKey(raw), b, limit.until)
 	limit.pending = err != nil
 	if err != nil {
 		s.persistenceFailed()
@@ -79,7 +79,7 @@ func (s *Service) checkSourceLimit(ctx context.Context, raw string) error {
 	defer limit.mu.Unlock()
 	if !limit.loaded {
 		if s.cache != nil {
-			b, _, found, err := s.cache.CacheGet(ctx, "source_limit:"+sourceLimitKey(raw))
+			b, _, found, err := s.cache.CacheGet(ctx, "source_limit:"+s.sourceLimitKey(raw))
 			if err != nil {
 				s.persistenceFailed()
 				return errors.New("source schedule unavailable")

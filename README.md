@@ -38,6 +38,8 @@ curl 'http://localhost:8080/api/v1/offers?family=4&currency=USD&limit=20'
 
 Provider collection runs in the background, so a fresh database may initially return an empty catalogue. Run one ingestion process per database.
 
+The optional [IRR consistency check](docs/irr.md) uses a [private IRRd mirror](deploy/irrd/README.md) and serves normalized cached observations through REST/MCP.
+
 Prefer Docker? Follow the [Compose setup](docs/deployment.md#containers) to run PostgreSQL, the backend and the frontend together.
 
 ## REST and MCP

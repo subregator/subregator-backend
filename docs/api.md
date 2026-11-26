@@ -72,7 +72,7 @@ Collection throughput is bounded by source quotas, independently of fast catalog
 
 Optional `abuse` exposes source report counts, dates, actual search ranges and query windows without raw complaint logs. It is off by default and requires an approved AbuseIPDB account/key and public use/retention conditions. See the [abuse observation contract](abuse.md). Zero reports is not a safety or resolution finding.
 
-Optional `irr` compares registry route/route6 objects with observed BGP origins. It is off by default until source quotas and public use/retention rights are confirmed. See [IRR consistency](irr.md) for configuration, distinct outcomes, scope and pilot evidence.
+Optional `irr` compares registry route/route6 objects with observed BGP origins. It is off by default until registry public-use/retention rights are confirmed. The private IRRd mirror is queried only by background collection; public REST/MCP requests read normalized cached evidence. See [IRR consistency](irr.md) for configuration, distinct outcomes, scope, dates and coverage.
 
 BGP scope, separately dated RIS visibility and per-origin RPKI results are documented in the [routing explanation contract](routing.md). Exact and covering routes remain distinct; filtered, truncated or failed origins remain partial. Proposed ASN validation is separate from observed origins.
 

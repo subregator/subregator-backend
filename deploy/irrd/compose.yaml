@@ -1,0 +1,95 @@
+name: subregator-irrd
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  irrd:
+    image: subregator-irrd:4.5.5
+    build: .
+    init: true
+    restart: unless-stopped
+    depends_on:
+      irrd-postgres:
+        condition: service_healthy
+      irrd-redis:
+        condition: service_healthy
+    environment:
+      IRRD_DATABASE_URL: postgresql://irrd:${IRRD_POSTGRES_PASSWORD:?set IRRD_POSTGRES_PASSWORD}@irrd-postgres/irrd
+    volumes:
+      - ./irrd.yaml:/etc/irrd.yaml:ro
+      - work:/var/lib/irrd
+    tmpfs:
+      - /run/irrd:uid=10001,gid=10001,mode=0700,size=16m
+      - /tmp:uid=10001,gid=10001,mode=0700,size=64m
+    ports:
+      - 127.0.0.1:18084:8000
+    networks:
+      default: {}
+      subregator:
+        aliases: [subregator-irrd]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    cpus: 1.5
+    mem_limit: 3g
+    stop_grace_period: 60s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - 'import json,urllib.request; r=urllib.request.Request("http://127.0.0.1:8000/graphql/",data=b''{"query":"{databaseStatus{source}}"}'',headers={"Content-Type":"application/json","Host":"subregator-irrd"}); d=json.load(urllib.request.urlopen(r,timeout=5)); assert "data" in d and not d.get("errors")'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging: *logging
+
+  irrd-postgres:
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: irrd
+      POSTGRES_DB: irrd
+      POSTGRES_PASSWORD: ${IRRD_POSTGRES_PASSWORD:?set IRRD_POSTGRES_PASSWORD}
+    command: [postgres, -c, random_page_cost=1.0, -c, work_mem=50MB, -c, shared_buffers=256MB, -c, max_connections=40]
+    volumes:
+      - postgres:/var/lib/postgresql
+      - ./init.sql:/docker-entrypoint-initdb.d/irrd.sql:ro
+    shm_size: 256m
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U irrd -d irrd']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    cpus: 1
+    mem_limit: 1536m
+    stop_grace_period: 60s
+    logging: *logging
+
+  irrd-redis:
+    image: redis:7.4-bookworm@sha256:6b645a37f49b0546582468706b32e71a8b7fbb5ba4583d0f9e27a8004716b738
+    restart: unless-stopped
+    command: [redis-server, --save, "", --appendonly, "no", --maxmemory, 2gb, --maxmemory-policy, noeviction]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    cpus: 0.5
+    mem_limit: 2304m
+    logging: *logging
+
+volumes:
+  postgres:
+  work:
+
+networks:
+  subregator:
+    external: true
+    name: ${SUBREGATOR_NETWORK_NAME:-subregator_default}

@@ -51,7 +51,10 @@ type CollectionStatus struct {
 	Semantics                  string          `json:"semantics"`
 }
 
-func upstreamName(raw string) string {
+func (s *Service) upstreamName(raw string) string {
+	if raw == s.irrdURL {
+		return "IRRd"
+	}
 	u, err := url.Parse(raw)
 	if err != nil {
 		return "other"
@@ -61,8 +64,6 @@ func upstreamName(raw string) string {
 		return "Spamhaus ZEN"
 	case "api.abuseipdb.com":
 		return "AbuseIPDB"
-	case "irrexplorer.nlnog.net":
-		return "IRRexplorer"
 	case "stat.ripe.net":
 		return "RIPEstat"
 	case "data.iana.org":
@@ -80,7 +81,7 @@ func upstreamName(raw string) string {
 }
 
 func (s *Service) recordRequest(raw string, status int, err error, elapsed time.Duration) {
-	name := upstreamName(raw)
+	name := s.upstreamName(raw)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r := s.stats[name]

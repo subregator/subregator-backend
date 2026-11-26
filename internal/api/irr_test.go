@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,12 +24,18 @@ func TestIRRRESTMCPPostgresRestartAndGate(t *testing.T) {
 	}
 	now, expires := time.Now().UTC(), time.Now().UTC().Add(time.Hour)
 	snapshot := now.Add(-time.Hour)
-	detail := intelligence.IRRExplanation{Prefix: "1.1.1.0/24", Status: "bgp_unavailable", Completeness: "complete", ObjectLimit: 200, Objects: []intelligence.IRRObject{{Class: "route", Prefix: "1.1.1.0/24", Origin: 13335, Registry: "RADB", Relation: "exact", ID: "1.1.1.0/24AS13335"}}, Registries: []intelligence.IRRRegistry{{Name: "RADB", UpdatedAt: &snapshot, Freshness: "fresh"}}, MissingOrigins: []uint32{}, MetadataURL: "https://irrexplorer.nlnog.net/api/metadata/", MetadataObservedAt: &now}
+	detail := intelligence.IRRExplanation{Prefix: "1.1.1.0/24", Status: "bgp_unavailable", Completeness: "complete", ObjectLimit: 200, Objects: []intelligence.IRRObject{{Class: "route", Prefix: "1.1.1.0/24", Origin: 13335, Registry: "APNIC", Relation: "exact", ID: "1.1.1.0/24AS13335"}}, Registries: []intelligence.IRRRegistry{{Name: "APNIC", UpdatedAt: &snapshot, Freshness: "fresh"}}, MissingOrigins: []uint32{}, MetadataURL: "https://github.com/subregator/subregator-backend/blob/main/docs/irr.md", MetadataObservedAt: &now}
 	raw, _ := json.Marshal(detail)
 	for name, data := range map[string]json.RawMessage{"irr": raw, "prefix_overview": json.RawMessage(`{"resource":"1.1.1.0/24","announced":true,"is_less_specific":false,"num_filtered_out":0,"asns":[{"asn":13335}]}`)} {
 		metric := intelligence.Metric{Name: name, Status: "ok", Source: "fixture", ObservedAt: &now, ExpiresAt: &expires, Data: data}
+		if name == "irr" {
+			metric.Source = "IRRd"
+		}
 		b, _ := json.Marshal(metric)
 		key := `{"Resource":"1.1.1.0/24","Name":"` + name + `","Start":"","End":"","Version":"","ASN":0}`
+		if name == "irr" {
+			key = strings.Replace(key, `"Version":""`, `"Version":"irrd-v1"`, 1)
+		}
 		if err := d.CachePut(ctx, key, b, expires); err != nil {
 			t.Fatal(err)
 		}
@@ -42,7 +49,9 @@ func TestIRRRESTMCPPostgresRestartAndGate(t *testing.T) {
 	}
 	defer d.Close()
 	checks := intelligence.New(d, false, "", 120)
-	checks.EnableIRR()
+	if err := checks.EnableIRR(intelligence.DefaultIRRdURL); err != nil {
+		t.Fatal(err)
+	}
 	h := Handler(store(t, 1), "", Services{Intelligence: checks})
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/network?resource=1.1.1.0%2F24&checks=irr", nil))
@@ -58,7 +67,7 @@ func TestIRRRESTMCPPostgresRestartAndGate(t *testing.T) {
 	}
 	validateOpenAPI(t, "NetworkReport", rest)
 	saved := intelligence.NewAutomatic(checks).Get(rest.Resource.Value)
-	saved.IRR = &intelligence.Check{Status: "consistent", Freshness: "fresh", Source: "IRRexplorer", ObservedAt: &now, ExpiresAt: &expires, Observation: rest.Metrics[0].Observation, IRR: rest.Metrics[0].IRR}
+	saved.IRR = &intelligence.Check{Status: "consistent", Freshness: "fresh", Source: "IRRd", ObservedAt: &now, ExpiresAt: &expires, Observation: rest.Metrics[0].Observation, IRR: rest.Metrics[0].IRR}
 	savedBytes, _ := json.Marshal(saved)
 	if err := d.CachePut(ctx, "automatic:"+saved.Resource, savedBytes, expires); err != nil {
 		t.Fatal(err)
@@ -78,7 +87,9 @@ func TestIRRRESTMCPPostgresRestartAndGate(t *testing.T) {
 	}
 	validateOpenAPI(t, "OfferChecks", restored)
 	checks = intelligence.New(d, false, "", 120)
-	checks.EnableIRR()
+	if err := checks.EnableIRR(intelligence.DefaultIRRdURL); err != nil {
+		t.Fatal(err)
+	}
 	h = Handler(store(t, 1), "", Services{Intelligence: checks})
 
 	server := httptest.NewServer(h)

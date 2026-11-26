@@ -239,7 +239,7 @@ func (s *Service) initialMetric(target Target, name string, q Query) Metric {
 		m.Error = "Abuse collection supports current IPv4 /24-/31 or IPv6 /120-/127 with a fixed 30-day window; single-host, broader, historical and proposed-ASN queries are unsupported"
 	} else if name == "irr" && !s.irrEnabled {
 		m.Status = "not_configured"
-		m.Error = "IRR source access, quotas and publication/retention rights are not configured"
+		m.Error = "IRRd mirror access and registry publication/retention conditions are not configured"
 	} else if name == "irr" && (q.ASN != 0 || q.StartTime != "" || q.EndTime != "" || q.Version != "") {
 		m.Status = "not_applicable"
 		m.Error = "IRR supports current prefix observations only, without historical parameters or a proposed ASN"

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"github.com/subregator/subregator-backend/internal/intelligence"
 	"io"
 	"log/slog"
 	"net"
@@ -17,6 +18,7 @@ type config struct {
 	SpamhausKey     string
 	AbuseIPDB       bool
 	AbuseIPDBKey    string
+	IRRdURL         string
 	IRR             bool
 	RequestsRPS     int
 	MaxConcurrent   int
@@ -40,14 +42,14 @@ func loadConfig(args []string, getenv func(string) string, output io.Writer) (co
 		}
 		return fallback
 	}
-	c := config{}
+	c := config{IRRdURL: env("IRRD_URL", intelligence.DefaultIRRdURL)}
 	fs := flag.NewFlagSet("subregator", flag.ContinueOnError)
 	fs.SetOutput(output)
 	fs.StringVar(&c.Addr, "addr", env("ADDR", "127.0.0.1:8080"), "HTTP listen address (SUBREGATOR_ADDR)")
 	c.DatabaseURL = env("DATABASE_URL", "postgresql://subregator@127.0.0.1:5432/subregator?sslmode=disable")
 	spamhaus := fs.String("spamhaus", env("SPAMHAUS", "false"), "Enable licensed Spamhaus HTTPS queries after quota and data-use approval (SUBREGATOR_SPAMHAUS)")
 	abuse := fs.String("abuseipdb", env("ABUSEIPDB", "false"), "Enable AbuseIPDB only after account, quota and data-use approval (SUBREGATOR_ABUSEIPDB)")
-	irr := fs.String("irr", env("IRR", "false"), "Enable IRRexplorer collection only after confirming source quotas and publication/retention rights (SUBREGATOR_IRR)")
+	irr := fs.String("irr", env("IRR", "false"), "Enable IRRd collection only after confirming registry publication/retention rights (SUBREGATOR_IRR)")
 	requestsRPS := fs.String("requests-rps", env("REQUESTS_RPS", "100"), "Global HTTP requests per second and burst (SUBREGATOR_REQUESTS_RPS)")
 	maxConcurrent := fs.String("max-concurrent", env("MAX_CONCURRENT", "32"), "Maximum simultaneous HTTP operations (SUBREGATOR_MAX_CONCURRENT)")
 	checksRPM := fs.String("checks-rpm", env("CHECKS_RPM", "120"), "Maximum upstream requests per minute (SUBREGATOR_CHECKS_RPM)")

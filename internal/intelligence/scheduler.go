@@ -217,6 +217,9 @@ func (a *Automatic) restoreSchedule(ctx context.Context, key string, names []str
 		var report OfferChecks
 		if err == nil && found && json.Unmarshal(b, &report) == nil && report.Resource == key {
 			a.mu.Lock()
+			if report.IRR != nil && report.IRR.Source != "IRRd" {
+				report.IRR = nil
+			}
 			a.reports[key] = report
 			a.mu.Unlock()
 		}
