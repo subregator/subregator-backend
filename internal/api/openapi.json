@@ -855,7 +855,7 @@
           {
             "name": "checks",
             "in": "query",
-            "description": "Comma separated check names from /network/checks",
+            "description": "Comma-separated check names from /network/checks, or all for every available check. Inapplicable, unavailable and unconfigured results remain explicit.",
             "schema": {
               "type": "string"
             },
@@ -900,6 +900,25 @@
               "maximum": 4294967295
             },
             "required": false
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "required": false,
+            "description": "Public IP inside the requested prefix for active ping/traceroute. Defaults to the first usable address; does not represent the whole subnet.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "test_url",
+            "in": "query",
+            "required": false,
+            "description": "HTTP(S) URL of a public test file: IP-literal host must belong to resource, port 80/443, no credentials, query or fragment. Throughput reads at most 8 MiB for 8 seconds from the backend.",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
           }
         ],
         "responses": {
@@ -1287,7 +1306,7 @@
     "/api/v1/network/lookup": {
       "get": {
         "summary": "Look up a public IP, subnet or ASN on demand",
-        "description": "Reuse fresh cached observations and collect missing or expired checks from free sources. No authentication required. Shares process request admission, four concurrent inspections, a 12-second deadline and the configured upstream request budget. Reports may be partial; inspect every metric status, coverage and freshness. Network-disabled mode makes no external requests. Supports asn_relationships and announced_prefixes in checks.",
+        "description": "Reuse fresh cached observations and collect missing or expired checks from free sources. No authentication required. Shares process request admission, four concurrent inspections, a 12-second deadline and the configured upstream request budget. Reports may be partial; inspect every metric status, coverage and freshness. Network-disabled mode makes no external requests. Supports asn_relationships and announced_prefixes in checks. Checks include geolocation database estimates, incremental per-address DNSBL collection for at most 256 addresses, public Globalping ping/traceroute jobs (EU/NA/AS, three probes), and bounded HTTP throughput with test_url. Pending measurements resume on later calls; inspect status, observation.completeness and data for actual coverage. The default prefix measurement address is a sample, not whole-prefix reachability. Active measurements can consume the upstream free quota.",
         "parameters": [
           {
             "name": "resource",
@@ -1301,7 +1320,7 @@
           {
             "name": "checks",
             "in": "query",
-            "description": "Comma separated check names from /network/checks",
+            "description": "Comma-separated check names from /network/checks, or all for every available check. Inapplicable, unavailable and unconfigured results remain explicit.",
             "schema": {
               "type": "string"
             },
@@ -1346,6 +1365,25 @@
               "maximum": 4294967295
             },
             "required": false
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "required": false,
+            "description": "Public IP inside the requested prefix for active ping/traceroute. Defaults to the first usable address; does not represent the whole subnet.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "test_url",
+            "in": "query",
+            "required": false,
+            "description": "HTTP(S) URL of a public test file: IP-literal host must belong to resource, port 80/443, no credentials, query or fragment. Throughput reads at most 8 MiB for 8 seconds from the backend.",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
           }
         ],
         "responses": {

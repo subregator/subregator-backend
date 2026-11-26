@@ -51,7 +51,7 @@ Prefer Docker? Follow the [Compose setup](docs/deployment.md#containers) to run 
 | MCP Streamable HTTP  | `http://localhost:8080/mcp`                                       |
 | Liveness / readiness | `/healthz` / `/readyz`                                            |
 
-See the [API and data reference](docs/api.md) for filters, pagination, history, source policies and MCP configuration. Network lookups return cached observations; visitors cannot trigger upstream checks.
+See the [API and data reference](docs/api.md) for filters, pagination, history, source policies and MCP configuration. Use `/api/v1/network` for cached observations or `/api/v1/network/lookup?resource=163.5.251.0%2F24&checks=all` for on-demand collection. The [network evidence contract](docs/network-checks.md) covers topology, geolocation, whole-prefix DNSBL progress, active ping/traceroute and bounded HTTP throughput.
 
 ## Development
 

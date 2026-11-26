@@ -50,6 +50,10 @@ func observation(status string, observed, expires *time.Time, now time.Time) Obs
 func metricObservation(m Metric, target Target, q Query, now time.Time) Observation {
 	o := observation(m.Status, m.ObservedAt, m.ExpiresAt, now)
 	o.Scope = ObservationScope{Requested: target.Value, Kind: target.Kind, Relation: "unknown", ASN: q.ASN, StartTime: q.StartTime, EndTime: q.EndTime, Version: q.Version}
+	switch m.Name {
+	case "geolocation", "dns_blocklists", "ping", "traceroute", "throughput":
+		return extendedObservation(m, target, o)
+	}
 	if m.Status != "ok" && m.Status != "no_data" {
 		o.FailureReason = m.Error
 	}
@@ -225,7 +229,16 @@ func checkObservation(c Check, resource, name string, now time.Time) Observation
 func (s *Service) initialMetric(target Target, name string, q Query) Metric {
 	d := definitions[name]
 	m := Metric{Name: name, Status: "pending", Source: d.Source, Coverage: d.Coverage, Data: json.RawMessage("null")}
-	if name == "spamhaus_zen" && !s.spamhausConfigured() {
+	if (name == "geolocation" || name == "dns_blocklists" || name == "ping" || name == "traceroute" || name == "throughput") && (q.StartTime != "" || q.EndTime != "" || q.Version != "" || q.ASN != 0) {
+		m.Status = "not_applicable"
+		m.Error = "This check supports current observations only; historical and proposed-ASN parameters are unsupported"
+	} else if name == "throughput" && q.TestURL == "" && slices.Contains(d.Kinds, target.Kind) {
+		m.Status = "not_configured"
+		m.Error = "A public HTTP(S) test_url inside the requested resource is required for a real throughput measurement"
+	} else if name == "dns_blocklists" && target.Kind == "prefix" && func() bool { p, _ := netip.ParsePrefix(target.Value); return p.Bits() < p.Addr().BitLen()-8 }() {
+		m.Status = "not_applicable"
+		m.Error = "Whole-prefix DNSBL collection supports at most 256 addresses; use IPv4 /24+ or IPv6 /120+"
+	} else if name == "spamhaus_zen" && !s.spamhausConfigured() {
 		m.Status = "not_configured"
 		m.Error = "Spamhaus HTTPS product access, query key, quota and display/retention rights require approval"
 	} else if name == "spamhaus_zen" && (q.ASN != 0 || q.StartTime != "" || q.EndTime != "" || q.Version != "") {

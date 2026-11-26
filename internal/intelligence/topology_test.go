@@ -164,11 +164,11 @@ func TestRDAPFollowsOnlyTrustedBudgetedReferrals(t *testing.T) {
 				v.Header.Set("Location", destination)
 				return v, nil
 			}
-			return response(200, `{"handle":"163.5.251.0 - 163.5.251.255","name":"InterLIR-Marketplace"}`), nil
+			return response(200, `{"handle":"163.5.251.0 - 163.5.251.255","name":"InterLIR-Marketplace","startAddress":"163.5.251.0","endAddress":"163.5.251.255"}`), nil
 		})
 		r, err := s.Inspect(context.Background(), Query{Resource: "163.5.251.0/24", Checks: []string{"rdap"}})
 		trusted := strings.HasPrefix(destination, "https://rdap.db.ripe.net/")
-		if err != nil || (r.Metrics[0].Status == "ok") != trusted || calls != map[bool]int{true: 3, false: 2}[trusted] {
+		if err != nil || (r.Metrics[0].Status == "ok") != trusted || calls != map[bool]int{true: 4, false: 2}[trusted] {
 			t.Fatalf("referral %s: calls=%d %v %+v", destination, calls, err, r)
 		}
 	}

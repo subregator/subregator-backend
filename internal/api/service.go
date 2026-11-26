@@ -328,10 +328,10 @@ func (s *service) lookup(ctx context.Context, q intelligence.Query) (intelligenc
 	return result, nil
 }
 func parseInspection(v url.Values) (intelligence.Query, error) {
-	if e := parseFilters(v, "resource checks start_time end_time version asn"); e != nil {
+	if e := parseFilters(v, "resource checks start_time end_time version asn address test_url"); e != nil {
 		return intelligence.Query{}, e
 	}
-	q := intelligence.Query{Resource: v.Get("resource"), StartTime: v.Get("start_time"), EndTime: v.Get("end_time"), Version: v.Get("version")}
+	q := intelligence.Query{Address: v.Get("address"), TestURL: v.Get("test_url"), Resource: v.Get("resource"), StartTime: v.Get("start_time"), EndTime: v.Get("end_time"), Version: v.Get("version")}
 	if raw := v.Get("checks"); raw != "" {
 		q.Checks = strings.Split(raw, ",")
 	}

@@ -57,6 +57,15 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 	return report, nil
 }
 func metricKey(target Target, q Query, name string) string {
+	if name != "ping" && name != "traceroute" {
+		q.Address = ""
+	}
+	if name != "throughput" {
+		q.TestURL = ""
+	}
+	if name == "dns_blocklists" {
+		q.Version = "dnsbl-v1"
+	}
 	if name == "irr" {
 		q.Version = "irrd-v1"
 	}
@@ -67,6 +76,8 @@ func metricKey(target Target, q Query, name string) string {
 		End      string
 		Version  string
 		ASN      uint32
-	}{target.Value, name, q.StartTime, q.EndTime, q.Version, q.ASN})
+		Address  string `json:",omitempty"`
+		TestURL  string `json:",omitempty"`
+	}{target.Value, name, q.StartTime, q.EndTime, q.Version, q.ASN, q.Address, q.TestURL})
 	return string(b)
 }

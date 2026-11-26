@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AuthFailed/subregator-backend/internal/intelligence"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/subregator/subregator-backend/internal/intelligence"
 )
 
 func TestPublicLookupRESTAndMCPShareCache(t *testing.T) {
