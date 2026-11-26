@@ -48,6 +48,17 @@ func NewStore(path string, providers []Provider) (*Store, error) {
 		if p.ID == "peaktera" && p.Policy.MinRefreshSeconds < 900 {
 			return nil, errors.New("Peaktera requires at least 15 minutes between refreshes")
 		}
+		if p.Policy.RefreshAfterUTC != "" {
+			if clock, err := time.Parse("15:04", p.Policy.RefreshAfterUTC); err != nil || clock.Format("15:04") != p.Policy.RefreshAfterUTC {
+				return nil, errors.New("invalid provider UTC refresh time")
+			}
+		}
+		if p.Policy.MaxCurrentAgeSeconds < 0 || p.Policy.MaxCurrentAgeSeconds > 30*86400 {
+			return nil, errors.New("invalid provider maximum current age")
+		}
+		if p.ID == "elisteka" && (p.Policy.PrefixVisibility != "hidden" || p.Policy.MinRefreshSeconds < 86400 || p.Policy.RefreshAfterUTC == "" || p.Policy.RefreshAfterUTC < "04:00" || p.Policy.MaxCurrentAgeSeconds <= 0 || p.Policy.MaxCurrentAgeSeconds > 36*3600) {
+			return nil, errors.New("ELISTEKA requires hidden prefixes, daily refresh after 04:00 UTC and at most 36 hours current age")
+		}
 		if p.ID == "prefix-broker" && (p.Policy.PrefixVisibility != "hidden" || p.Policy.MinRefreshSeconds < 86400) {
 			return nil, errors.New("Prefix Broker requires hidden prefixes and at least daily refresh interval")
 		}
@@ -238,7 +249,7 @@ func (v *View) Freshness(id string, now time.Time) string {
 			if s.LastSuccess == nil {
 				return "unavailable"
 			}
-			if s.Error != "" || now.Sub(*s.LastSuccess) > time.Duration(p.Policy.MinRefreshSeconds)*time.Second*2 {
+			if s.Error != "" || now.Sub(*s.LastSuccess) > p.Policy.MaxCurrentAge() {
 				return "stale"
 			}
 			return "fresh"
@@ -253,7 +264,7 @@ func (v *View) OfferFreshness(o Offer, now time.Time) string {
 		return state
 	}
 	for _, p := range v.Providers {
-		if p.ID == o.ProviderID && now.Sub(o.ObservedAt) > time.Duration(p.Policy.MinRefreshSeconds)*2*time.Second {
+		if p.ID == o.ProviderID && now.Sub(o.ObservedAt) > p.Policy.MaxCurrentAge() {
 			return "stale"
 		}
 	}

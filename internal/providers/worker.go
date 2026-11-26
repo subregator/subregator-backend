@@ -34,24 +34,58 @@ func ReadFeed(path, id string) ([]catalog.Offer, error) {
 	if len(b) > maxBody {
 		return nil, errors.New("feed exceeds limit")
 	}
+	return ParseFeed(b, id)
+}
+
+// ParseFeed validates the same v1 envelope for local and remote feeds.
+func ParseFeed(b []byte, id string) ([]catalog.Offer, error) {
+	if len(b) > maxBody {
+		return nil, errors.New("feed exceeds limit")
+	}
 	var feed Feed
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
-	if e = d.Decode(&feed); e != nil {
+	if e := d.Decode(&feed); e != nil {
 		return nil, errors.New("invalid feed")
 	}
-	if e = d.Decode(new(any)); e != io.EOF {
+	if e := d.Decode(new(any)); e != io.EOF {
 		return nil, errors.New("trailing feed data")
 	}
 	if feed.SchemaVersion != 1 || feed.ProviderID != id || !feed.Complete || feed.Offers == nil {
 		return nil, errors.New("invalid or incomplete feed")
 	}
 	for _, o := range feed.Offers {
+		if o.ProviderID != id {
+			return nil, errors.New("feed offer provider mismatch")
+		}
 		if o.ObservedAt.IsZero() {
 			return nil, errors.New("feed observation timestamp missing")
 		}
 	}
 	return feed.Offers, nil
+}
+
+func refreshDue(p catalog.Provider, sources []catalog.Source, now time.Time) bool {
+	var slot time.Time
+	if p.Policy.RefreshAfterUTC != "" {
+		clock, err := time.Parse("15:04", p.Policy.RefreshAfterUTC)
+		if err != nil {
+			return false
+		}
+		u := now.UTC()
+		slot = time.Date(u.Year(), u.Month(), u.Day(), clock.Hour(), clock.Minute(), 0, 0, time.UTC)
+		if now.Before(slot) {
+			return false
+		}
+	}
+	for _, source := range sources {
+		if source.ProviderID == p.ID && source.LastAttempt != nil {
+			if now.Sub(*source.LastAttempt) < time.Duration(p.Policy.MinRefreshSeconds)*time.Second || !slot.IsZero() && !source.LastAttempt.Before(slot) {
+				return false
+			}
+		}
+	}
+	return true
 }
 func Run(ctx context.Context, s *catalog.Store, feedsDir string, network bool) {
 	tick := time.NewTicker(30 * time.Second)
@@ -62,7 +96,7 @@ func Run(ctx context.Context, s *catalog.Store, feedsDir string, network bool) {
 		var wg sync.WaitGroup
 		sem := make(chan struct{}, 3)
 		for _, p := range s.View().Providers {
-			builtIn := p.ID == "onie" || p.ID == "peaktera" || p.ID == "prefix-broker" || p.ID == "obhost"
+			builtIn := p.ID == "onie" || p.ID == "peaktera" || p.ID == "prefix-broker" || p.ID == "obhost" || p.ID == "elisteka"
 			file := filepath.Join(feedsDir, p.ID+".json")
 			_, fileErr := os.Stat(file)
 			hasFeed := feedsDir != "" && fileErr == nil
@@ -72,13 +106,7 @@ func Run(ctx context.Context, s *catalog.Store, feedsDir string, network bool) {
 			if p.Policy.Publication != "approved" && p.Policy.Publication != "public_source" {
 				continue
 			}
-			due := true
-			for _, x := range s.View().Sources {
-				if x.ProviderID == p.ID && x.LastAttempt != nil && time.Since(*x.LastAttempt) < time.Duration(p.Policy.MinRefreshSeconds)*time.Second {
-					due = false
-				}
-			}
-			if !due {
+			if !refreshDue(p, s.View().Sources, time.Now()) {
 				continue
 			}
 			wg.Add(1)
@@ -97,6 +125,8 @@ func Run(ctx context.Context, s *catalog.Store, feedsDir string, network bool) {
 					offers, e = ReadFeed(file, p.ID)
 				} else {
 					switch p.ID {
+					case "elisteka":
+						offers, e = LoadElisteka(ctx, client, ElistekaFeedURL)
 					case "onie":
 						offers, e = LoadOnie(ctx, client, "https://api.onie.net/v1/public/ip-subnets", at)
 					case "peaktera":

@@ -13,11 +13,22 @@ import (
 )
 
 type Policy struct {
-	Publication       string   `json:"publication"`
-	PrefixVisibility  string   `json:"prefix_visibility"`
-	MinRefreshSeconds int      `json:"min_refresh_seconds"`
-	Conditions        []string `json:"conditions"`
+	Publication          string   `json:"publication"`
+	PrefixVisibility     string   `json:"prefix_visibility"`
+	MinRefreshSeconds    int      `json:"min_refresh_seconds"`
+	RefreshAfterUTC      string   `json:"refresh_after_utc,omitempty"`
+	MaxCurrentAgeSeconds int      `json:"max_current_age_seconds,omitempty"`
+	Conditions           []string `json:"conditions"`
 }
+
+// MaxCurrentAge defaults to two refresh intervals for existing providers.
+func (p Policy) MaxCurrentAge() time.Duration {
+	if p.MaxCurrentAgeSeconds > 0 {
+		return time.Duration(p.MaxCurrentAgeSeconds) * time.Second
+	}
+	return time.Duration(p.MinRefreshSeconds) * 2 * time.Second
+}
+
 type Provider struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
