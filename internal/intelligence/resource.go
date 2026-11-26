@@ -72,6 +72,8 @@ func publicPrefix(p netip.Prefix) bool {
 
 type Query struct {
 	overview  *Metric
+	Address   string   `json:"address,omitempty"`
+	TestURL   string   `json:"test_url,omitempty"`
 	Resource  string   `json:"resource"`
 	Checks    []string `json:"checks,omitempty"`
 	StartTime string   `json:"start_time,omitempty"`
@@ -93,7 +95,30 @@ func (q *Query) validate() (Target, error) {
 			q.Checks = []string{"prefix_overview", "routing_status", "rpki", "registration", "rdap"}
 		}
 	}
-	if len(q.Checks) > 16 {
+	if len(q.Checks) == 1 && q.Checks[0] == "all" {
+		q.Checks = nil
+		for _, d := range Capabilities() {
+			q.Checks = append(q.Checks, d.Name)
+		}
+	}
+	if q.Address != "" {
+		address, e := ParseTarget(q.Address)
+		if e != nil || address.Kind != "ip" || (target.Kind == "ip" && address.Value != target.Value) || target.Kind == "asn" {
+			return target, errors.New("address must be an IP inside the requested resource")
+		}
+		if target.Kind == "prefix" {
+			p, _ := netip.ParsePrefix(target.Value)
+			ip, _ := netip.ParseAddr(address.Value)
+			if !p.Contains(ip) {
+				return target, errors.New("address is outside requested prefix")
+			}
+		}
+		q.Address = address.Value
+	}
+	if q.TestURL != "" && !validTestURL(q.TestURL, target) {
+		return target, errors.New("test_url must be HTTP(S), a matching public IP literal, port 80/443, without credentials, query or fragment")
+	}
+	if len(q.Checks) > len(definitions) {
 		return target, errors.New("too many checks")
 	}
 	seen := map[string]bool{}

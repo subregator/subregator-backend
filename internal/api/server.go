@@ -69,6 +69,15 @@ func Handler(store *catalog.Store, origin string, extras ...Services) http.Handl
 		result, e := service.inspect(r.Context(), q)
 		respond(w, r, result, e)
 	})
+	mux.HandleFunc("GET /api/v1/network/lookup", func(w http.ResponseWriter, r *http.Request) {
+		q, e := parseInspection(r.URL.Query())
+		if e != nil {
+			respond(w, r, nil, e)
+			return
+		}
+		result, e := service.lookup(r.Context(), q)
+		respond(w, r, result, e)
+	})
 	mux.Handle("/mcp", service.mcpHandler())
 	mux.HandleFunc("GET /openapi.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -163,4 +172,4 @@ func writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	}
 }
 
-const indexHTML = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Subregator API</title><style>body{font:18px system-ui;max-width:760px;margin:60px auto;padding:24px;background:#101820;color:#edf2f5}a{color:#83d7b6}li{margin:16px 0}code{color:#83d7b6}</style><h1>Subregator API</h1><p>Read-only IP resource comparison. Prices and availability are provider observations; complete transactions directly with the provider.</p><ul><li><a href="/api/v1/offers">Available offers</a></li><li><a href="/api/v1/offers?currency=USD&amp;sort=price_asc&amp;limit=10">Lowest monthly base prices in USD</a></li><li><a href="/api/v1/providers">Providers, permissions and source freshness</a></li><li><a href="/openapi.json">OpenAPI contract</a></li><li><a href="/readyz">Catalog readiness</a></li></ul><p>Price filters use hundredths of the currency per month for leases, or the full purchase price. Fees and taxes are separate. Seller country does not imply IP geolocation.</p></html>`
+const indexHTML = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Subregator API</title><style>body{font:18px system-ui;max-width:760px;margin:60px auto;padding:24px;background:#101820;color:#edf2f5}a{color:#83d7b6}li{margin:16px 0}code{color:#83d7b6}</style><h1>Subregator API</h1><p>Read-only IP resource comparison. Prices and availability are provider observations; complete transactions directly with the provider.</p><ul><li><a href="/api/v1/offers">Available offers</a></li><li><a href="/api/v1/offers?currency=USD&amp;sort=price_asc&amp;limit=10">Lowest monthly base prices in USD</a></li><li><a href="/api/v1/providers">Providers, permissions and source freshness</a></li><li><a href="/api/v1/network/checks">Available network checks</a></li><li><a href="/api/v1/network/lookup?resource=AS218036&amp;checks=asn_overview,asn_neighbours,asn_relationships,announced_prefixes">Look up AS218036</a></li><li><a href="/openapi.json">OpenAPI contract</a></li><li><a href="/readyz">Catalog readiness</a></li></ul><p>Price filters use hundredths of the currency per month for leases, or the full purchase price. Fees and taxes are separate. Seller country does not imply IP geolocation.</p></html>`

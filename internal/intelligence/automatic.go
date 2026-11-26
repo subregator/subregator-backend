@@ -42,7 +42,7 @@ type OfferChecks struct {
 	Semantics string `json:"semantics"`
 }
 
-var automaticChecks = []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "irr", "abuse", "spamhaus_zen"}
+var automaticChecks = []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "irr", "abuse", "spamhaus_zen", "asn_relationships", "announced_prefixes"}
 
 // Automatic is written only by Run; readers never schedule upstream work.
 type Automatic struct {

@@ -64,15 +64,23 @@ Offer list and detail responses include `checks`: exact-prefix BGP visibility, a
 
 Reports and metric observations survive restart through the bounded PostgreSQL cache. Up to 2,000 recent report/metric entries are retained, plus two DROP feed records in a separate table that older cache eviction cannot remove. Evicted reports are rebuilt automatically; a restart can temporarily show pending for them. DROP is downloaded at most once per day per address family, with the next attempt persisted before download, including failed attempts. Metadata, source date, copyright, complete record count and canonical prefixes are validated before publication. A failed refresh retains explicitly stale prior data. Failed completion writes are retried without another download or a new daily reservation; stopping before a successful retry can still lose the unsaved dataset. The background collector waits for request-budget windows so multi-origin RPKI can complete even at one request per minute, publishing completed checks as it progresses. See the [Spamhaus DROP usage requirements](https://www.spamhaus.org/faqs/do-not-route-or-peer-drop/).
 
-`GET /api/v1/network` and MCP `inspect_network` now read existing cached observations only. Visitors cannot trigger basic checks, force a refresh or consume the upstream budget. Arbitrary IP/ASN queries, advanced checks and historical parameter combinations without stored results remain pending. The updated frontend consumes the checks embedded in offers and removes per-row check requests and manual check buttons. Deploy that frontend separately. Keep the legacy frontend check-cache volume mounted in Compose until its image has been updated; the previous image requires this writable path during startup.
+`GET /api/v1/network` and MCP `inspect_network` now read existing cached observations only. These cache-only operations do not consume the upstream budget. The separate `/api/v1/network/lookup` and MCP `lookup_network` can collect missing or expired observations under the same process limits. Arbitrary IP/ASN queries, advanced checks and historical parameter combinations without stored results remain pending. The updated frontend consumes the checks embedded in offers and removes per-row check requests and manual check buttons. Deploy that frontend separately. Keep the legacy frontend check-cache volume mounted in Compose until its image has been updated; the previous image requires this writable path during startup.
 
 Collection throughput is bounded by source quotas, independently of fast catalogue reads. A large cold catalogue needs time to populate; the five-minute routing TTL can exceed the refresh capacity at the default 120 requests/minute. Measure source coverage and freshness before increasing budgets or adding sources. There is one scheduler per process; the existing database writer lease enforces a single ingestion process.
+
+## Public network lookup
+
+`GET /api/v1/network/lookup` accepts any public IP, prefix or ASN, without authentication. `checks=all` includes every defined check, with explicit unsupported, unconfigured and unavailable states. Active ping/traceroute use one selected address and three requested continents; whole-prefix DNSBL collection supports up to 256 addresses and resumes across requests. Throughput requires an explicit test URL inside the requested resource. See the [complete network evidence contract](network-checks.md).
+
+```sh
+curl 'http://localhost:8080/api/v1/network/lookup?resource=163.5.251.0%2F24&checks=all'
+```
 
 ## Cached network observations
 
 Optional `abuse` exposes source report counts, dates, actual search ranges and query windows without raw complaint logs. It is off by default and requires an approved AbuseIPDB account/key and public use/retention conditions. See the [abuse observation contract](abuse.md). Zero reports is not a safety or resolution finding.
 
-Optional `irr` compares registry route/route6 objects with observed BGP origins. It is off by default until registry public-use/retention rights are confirmed. The private IRRd mirror is queried only by background collection; public REST/MCP requests read normalized cached evidence. See [IRR consistency](irr.md) for configuration, distinct outcomes, scope, dates and coverage.
+Optional `irr` compares registry route/route6 objects with observed BGP origins. It is off by default until registry public-use/retention rights are confirmed. Background collection and explicit on-demand lookup can query the private IRRd mirror; cache-only REST/MCP requests read stored normalized evidence. See [IRR consistency](irr.md) for configuration, distinct outcomes, scope, dates and coverage.
 
 BGP scope, separately dated RIS visibility and per-origin RPKI results are documented in the [routing explanation contract](routing.md). Exact and covering routes remain distinct; filtered, truncated or failed origins remain partial. Proposed ASN validation is separate from observed origins.
 
@@ -89,7 +97,7 @@ curl 'http://localhost:8080/api/v1/network?resource=AS13335&checks=asn_neighbour
 curl 'http://localhost:8080/api/v1/network?resource=193.0.20.0/24&checks=registration_history&version=2020-01-01T00:00:00Z'
 ```
 
-Available checks include BGP overview/status, collector AS paths, routing history, current registration, historical registration versions, allocation and transfer history, RPKI prefix/ASN validation, ASN overview/neighbours, authoritative RIR RDAP and CAIDA ASRank. IPinfo Lite optionally supplies free country/ASN data for a specific IP when a free token is configured. No paid endpoints, subscriptions, synthetic reputation scores or active ping/traceroute jobs are used.
+Available checks include BGP overview/status, collector AS paths, routing history, current registration, historical registration versions, allocation and transfer history, RPKI prefix/ASN validation, ASN overview/neighbours, authoritative RIR RDAP and CAIDA ASRank. IPinfo Lite optionally supplies free country/ASN data for a specific IP when a free token is configured. The on-demand lookup also supports geolocation estimates, incremental per-address DNSBL collection, public Globalping ping/traceroute jobs and bounded HTTP throughput with an explicit test URL. See the [network evidence contract](network-checks.md) for completion, limits and source coverage. No synthetic reputation or ownership score is produced.
 
 Stored metrics carry their source URL, capture time, cache expiry, status and coverage. An unavailable check stays unknown. Failed refreshes can return explicitly stale cached observations. Cache TTLs range from one minute for Looking Glass to one day for infrequently changing records; the capabilities endpoint reports each TTL. Concurrent identical checks are deduplicated. Inspections and upstream requests have bounded concurrency and a shared configurable budget of 1..600 upstream requests/minute. Each upstream response is limited to 1 MiB; a truncated/invalid response is not accepted as complete data.
 
@@ -103,9 +111,9 @@ Sources: [RIPEstat API](https://stat.ripe.net/docs/data-api/ripestat-data-api), 
 
 The `/mcp` endpoint implements Streamable HTTP using the official Go SDK. It is stateless, uses SSE responses, negotiates the protocol and requires no sticky sessions. It exposes the same service operations and validation as REST:
 
-`search_offers`, `get_offer`, `list_providers`, `get_listing`, `listing_history`, `known_resources`, `inspect_network`, `network_checks`, `network_status`, `get_api_schema`.
+`search_offers`, `get_offer`, `list_providers`, `get_listing`, `listing_history`, `known_resources`, `inspect_network`, `lookup_network`, `network_checks`, `network_status`, `get_api_schema`.
 
-Filter tools accept a `filters` object containing the normal REST parameter names and values. Cached network observation lookup accepts resource, checks, start_time, end_time, version and asn; it never triggers external work. Results use structured content, with protocol-standard tool errors for invalid operations. Browser clients must use the allowed origin; JSON-RPC bodies are limited to 1 MiB.
+Filter tools accept a `filters` object containing the normal REST parameter names and values. Both network tools accept resource, checks (including `all`), start_time, end_time, version, asn, address and test_url. `inspect_network` is cache-only; `lookup_network` may collect external observations. Results use structured content, with protocol-standard tool errors for invalid operations. Browser clients must use the allowed origin; JSON-RPC bodies are limited to 1 MiB.
 
 Public client connection after deployment (use `http://localhost:8080/mcp` locally):
 

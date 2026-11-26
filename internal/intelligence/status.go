@@ -70,6 +70,8 @@ func (s *Service) upstreamName(raw string) string {
 		return "IANA RDAP bootstrap"
 	case "rdap.arin.net", "rdap.db.ripe.net", "rdap.apnic.net", "rdap.lacnic.net", "rdap.afrinic.net":
 		return "RIR RDAP"
+	case "api.globalping.io":
+		return "Globalping"
 	case "api.asrank.caida.org":
 		return "CAIDA ASRank"
 	case "api.ipinfo.io":

@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+type sourceRedirect struct{ location string }
+
+func (e *sourceRedirect) Error() string { return "upstream redirect refused" }
+
 func asnTarget(asn uint32) string { return "AS" + strconv.FormatUint(uint64(asn), 10) }
 func (s *Service) rdap(ctx context.Context, target Target) (Metric, error) {
 	family := "asn"
@@ -97,7 +101,16 @@ func (s *Service) rdap(ctx context.Context, target Target) (Metric, error) {
 		return Metric{}, errors.New("no supported authoritative RDAP service")
 	}
 	u := strings.TrimRight(base, "/") + "/" + path
-	b, e := s.request(ctx, u, "")
+	var b json.RawMessage
+	var e error
+	for hop := 0; hop < 4; hop++ {
+		b, e = s.request(ctx, u, "")
+		var redirect *sourceRedirect
+		if !errors.As(e, &redirect) || !validRDAPBase(redirect.location) {
+			break
+		}
+		u = redirect.location
+	}
 	if e != nil {
 		return Metric{}, e
 	}
