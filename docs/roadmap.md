@@ -97,12 +97,12 @@ Implementation: additive typed BGP/RPKI explanations, source-dated RIS visibilit
 
 ### BE-07 — Add IRR consistency checks
 
-- [ ] Pilot IRRexplorer/IRRd access; select the smallest supported integration after confirming endpoint terms and limits.
+- [x] Pilot private IRRd access after NLNOG declined hosted collection; retain a separate original-registry publication/retention gate.
 - [x] Return route/route6, object origin and registry source; compare with observed BGP origins. Preserve exact/containing relationships, duplicates and conflicting objects across registries.
 - **Done when:** missing objects, conflicts, BGP absence, unsupported scope and source failure have separate outcomes; IPv4 and IPv6 fixtures cover these cases. An IRR object is not proof of ownership or universal routing acceptance.
-- **Next step:** verify a representative prefix in each supported family and document response coverage. A full self-hosted IRR stack is not a prerequisite.
+- **Next step:** confirm the original registries' public-use/retention conditions, then approve delivery and enablement of normalized REST/MCP observations.
 
-Local adapter, comparison, cached REST/MCP/OpenAPI and persistence are implemented. The IPv4/IPv6 pilot confirmed response shapes and containing-route behavior. Quota and public redistribution/retention terms remain unconfirmed; collection is off by default. See [IRR contract](irr.md) and issue #9 for evidence and the enablement gate.
+The private IRRd mirror and normalized collector preserve comparison, cached REST/MCP/OpenAPI and persistence. Six-source IPv4/IPv6 mirror access is verified. Public redistribution/retention terms remain unconfirmed; collection is off by default. See [IRR contract](irr.md) and issue #9 for evidence and the enablement gate.
 
 ### BE-08 — Add subnet abuse observations
 
@@ -215,7 +215,7 @@ Reviewed during planning on 2026-11-25. Recheck capability and terms before enab
 | RIR RDAP | [IANA bootstrap](https://data.iana.org/rdap/) | Authoritative discovery; retain trusted endpoint validation |
 | Spamhaus | [DROP requirements](https://www.spamhaus.org/faqs/do-not-route-or-peer-drop/), [datasets](https://docs.spamhaus.com/datasets/docs/source/10-data-type-documentation/datasets/030-datasets.html), [DQS responses](https://docs.spamhaus.com/datasets/docs/source/70-access-methods/data-query-service/040-dqs-queries.html) | Separate lists, attribution, refresh limits and error semantics |
 | AbuseIPDB | [API v2](https://docs.abuseipdb.com/) | CIDR abuse queries, report windows, plan limits and per-IP details |
-| IRRexplorer | [Project and JSON API overview](https://github.com/NLNOG/irrexplorer) | IRR/BGP/RPKI consistency; public endpoint conditions still need confirmation |
+| IRRd | [GraphQL](https://irrd.readthedocs.io/en/stable/users/queries/graphql/) | Private route/route6 mirror and independent RIS consistency; original-registry public-use conditions remain separate |
 | IPXO | [Marketplace API example](https://developer.ipxo.com/api-example), [reputation history example](https://www.ipxo.com/kb/ip-management/ip-management-ip-reputation-feature/) | Inventory integration and competitor reference; access/redistribution not yet confirmed |
 | IPv4.Global | [Completed-transaction ticker](https://www.ipv4.global/news/chrome-extension/) | Anonymous market benchmarks; supported ingestion/reuse still need confirmation |
 | IPinfo | [Privacy options](https://ipinfo.io/developers/privacy-standard-api) | Optional paid privacy/usage context |

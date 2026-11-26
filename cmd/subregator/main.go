@@ -88,7 +88,9 @@ func run() error {
 		checks.EnableAbuseIPDB(cfg.AbuseIPDBKey)
 	}
 	if cfg.IRR {
-		checks.EnableIRR()
+		if err := checks.EnableIRR(cfg.IRRdURL); err != nil {
+			return err
+		}
 	}
 	automatic := intelligence.NewAutomatic(checks)
 	checksDone := make(chan struct{})

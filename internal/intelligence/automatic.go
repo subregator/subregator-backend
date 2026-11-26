@@ -102,9 +102,9 @@ func (a *Automatic) Get(resource string) OfferChecks {
 		r.Abuse = &check
 	}
 	if !a.service.irrEnabled {
-		r.IRR = &Check{Status: "not_configured", Freshness: "unknown", Source: "IRRexplorer", Coverage: definitions["irr"].Coverage, Reason: "IRR collection requires confirmed source access, quotas and publication/retention rights"}
+		r.IRR = &Check{Status: "not_configured", Freshness: "unknown", Source: "IRRd", Coverage: definitions["irr"].Coverage, Reason: "IRRd mirror access and registry publication/retention conditions must be configured"}
 	}
-	if r.IRR == nil {
+	if r.IRR == nil || r.IRR.Source != "IRRd" {
 		irr := unknownCheck()
 		r.IRR = &irr
 	}

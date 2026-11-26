@@ -1,20 +1,32 @@
 package intelligence
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
+	"net/http"
 	"net/netip"
-	"regexp"
+	"net/url"
 	"slices"
-	"sort"
+	"strconv"
+	"strings"
 	"time"
 )
 
-const irrBase = "https://irrexplorer.nlnog.net/api/"
+const DefaultIRRdURL = "http://subregator-irrd:8000/graphql/"
+const irrMetadataURL = "https://github.com/subregator/subregator-backend/blob/main/docs/irr.md"
 const irrObjectLimit = 200
 
-var irrRegistryName = regexp.MustCompile(`^[A-Z][A-Z0-9_-]{0,31}$`)
+var irrRegistryURLs = map[string]string{
+	"RIPE":         "https://ftp.ripe.net/ripe/dbase/split/",
+	"RIPE-NONAUTH": "https://ftp.ripe.net/ripe/dbase/split/",
+	"ARIN":         "https://www.arin.net/resources/manage/irr/",
+	"APNIC":        "https://ftp.apnic.net/apnic/whois/",
+	"LACNIC":       "https://irr.lacnic.net/",
+	"AFRINIC":      "https://afrinic.net/irr-guide",
+}
 
 type IRRObject struct {
 	Class      string `json:"class"`
@@ -27,9 +39,11 @@ type IRRObject struct {
 }
 
 type IRRRegistry struct {
-	Name      string     `json:"name"`
-	UpdatedAt *time.Time `json:"updated_at,omitempty"`
-	Freshness string     `json:"freshness"`
+	URL           string     `json:"url,omitempty"`
+	TimestampKind string     `json:"timestamp_kind,omitempty"`
+	Name          string     `json:"name"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+	Freshness     string     `json:"freshness"`
 }
 
 type IRRComparison struct {
@@ -60,16 +74,69 @@ func irrSupported(target Target) bool {
 	return err == nil && target.Kind == "prefix" && (p.Addr().Is4() && p.Bits() >= 9 || p.Addr().Is6() && p.Bits() >= 29)
 }
 
-func (s *Service) irr(ctx context.Context, target Target) (Metric, error) {
-	rawURL := irrBase + "prefixes/prefix/" + target.Value
-	routes, err := s.request(ctx, rawURL, "")
-	if errors.Is(err, ErrNoData) {
-		return Metric{}, errors.New("IRR source unavailable")
+// EnableIRR must run before collection starts.
+func (s *Service) EnableIRR(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil || len(endpoint) > 2048 || strings.TrimSpace(endpoint) != endpoint || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Opaque != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "/graphql/" && u.Path != "/graphql") || strings.HasSuffix(u.Host, ":") {
+		return errors.New("invalid IRRd GraphQL endpoint")
 	}
+	if u.Port() != "" {
+		port, err := strconv.Atoi(u.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return errors.New("invalid IRRd GraphQL endpoint")
+		}
+	}
+	s.irrdURL, s.irrEnabled = u.String(), true
+	return nil
+}
+
+func (s *Service) irrd(ctx context.Context, query string, variables map[string]any) (json.RawMessage, error) {
+	if err := s.checkSourceLimit(ctx, s.irrdURL); err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, sourceBudgetKey{}, s.irrdURL)
+	release, err := s.acquireRequest(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	body, _ := json.Marshal(map[string]any{"query": query, "variables": variables})
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.irrdURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, errors.New("invalid IRRd request")
+	}
+	request.Header.Set("Content-Type", "application/json")
+	raw, err := s.readRequest(ctx, request, "", 1<<20, true)
+	if err != nil {
+		if errors.Is(err, ErrNoData) {
+			return nil, errors.New("IRRd endpoint unavailable")
+		}
+		return nil, err
+	}
+	var envelope struct {
+		Data   json.RawMessage   `json:"data"`
+		Errors []json.RawMessage `json:"errors"`
+	}
+	if json.Unmarshal(raw, &envelope) != nil || len(envelope.Errors) > 0 || len(envelope.Data) == 0 || string(envelope.Data) == "null" {
+		return nil, errors.New("invalid IRRd GraphQL response")
+	}
+	return raw, nil
+}
+
+func (s *Service) irr(ctx context.Context, target Target) (Metric, error) {
+	const query = `query($prefix: IP!, $limit: Int!, $sources: [String!]) {
+ rpslObjects(ipAny: $prefix, recordLimit: $limit, sources: $sources, objectClass: ["route", "route6"], rpkiStatus: [valid, invalid, not_found], scopeFilterStatus: [in_scope, out_scope_as, out_scope_prefix], routePreferenceStatus: [visible, suppressed]) {
+ objectClass source rpslPk
+ ... on RPSLRoute { prefix origin }
+ ... on RPSLRoute6 { prefix origin }
+ }
+ }`
+	sources := slices.Sorted(maps.Keys(irrRegistryURLs))
+	routes, err := s.irrd(ctx, query, map[string]any{"prefix": target.Value, "limit": irrObjectLimit + 1, "sources": sources})
 	if err != nil {
 		return Metric{}, err
 	}
-	metadata, metadataError := s.request(ctx, irrBase+"metadata/", "")
+	metadata, metadataError := s.irrd(ctx, `query($sources: [String!]) { databaseStatus(sources: $sources) { source objectClassFilter rpslDataUpdated } }`, map[string]any{"sources": sources})
 	detail, err := normalizeIRR(routes, metadata, target, time.Now())
 	if err != nil {
 		return Metric{}, err
@@ -78,7 +145,7 @@ func (s *Service) irr(ctx context.Context, target Target) (Metric, error) {
 		detail.MetadataObservedAt = observedNow()
 	}
 	b, _ := json.Marshal(detail)
-	m := Metric{IRR: detail, Data: b, ObservedAt: observedNow(), SourceURL: rawURL}
+	m := Metric{IRR: detail, Data: b, ObservedAt: observedNow(), SourceURL: "https://api.subregator.com/api/v1/network?checks=irr&resource=" + url.QueryEscape(target.Value)}
 	var limited *sourceLimited
 	if errors.As(metadataError, &limited) {
 		m.RetryAt = &limited.Until
@@ -87,27 +154,49 @@ func (s *Service) irr(ctx context.Context, target Target) (Metric, error) {
 }
 
 func normalizeIRR(routes, metadata json.RawMessage, target Target, now time.Time) (*IRRExplanation, error) {
-	var rows []struct {
-		Prefix string `json:"prefix"`
-		Routes map[string][]struct {
-			ASN uint32 `json:"asn"`
-			ID  string `json:"rpslPk"`
-		} `json:"irrRoutes"`
+	var response struct {
+		Data *struct {
+			Objects []struct {
+				Class  string `json:"objectClass"`
+				Prefix string `json:"prefix"`
+				Origin string `json:"origin"`
+				Source string `json:"source"`
+				ID     string `json:"rpslPk"`
+			} `json:"rpslObjects"`
+		} `json:"data"`
+		Errors []json.RawMessage `json:"errors"`
 	}
-	if json.Unmarshal(routes, &rows) != nil || rows == nil {
-		return nil, errors.New("invalid IRR response")
+	if json.Unmarshal(routes, &response) != nil || response.Data == nil || response.Data.Objects == nil || len(response.Errors) > 0 {
+		return nil, errors.New("invalid IRRd route response")
 	}
 	requested, err := netip.ParsePrefix(target.Value)
 	if err != nil {
 		return nil, errors.New("unsupported IRR scope")
 	}
-	out := &IRRExplanation{Prefix: target.Value, Status: "bgp_unavailable", Completeness: "complete", ObjectLimit: irrObjectLimit, Objects: []IRRObject{}, Registries: []IRRRegistry{}, MissingOrigins: []uint32{}, MetadataURL: irrBase + "metadata/"}
-	count := 0
-	for _, row := range rows {
-		p, e := netip.ParsePrefix(row.Prefix)
-		if e != nil || p != p.Masked() || !p.Overlaps(requested) || row.Routes == nil {
+	out := &IRRExplanation{Prefix: target.Value, Status: "bgp_unavailable", Completeness: "complete", ObjectLimit: irrObjectLimit, Objects: []IRRObject{}, Registries: []IRRRegistry{}, MissingOrigins: []uint32{}, MetadataURL: irrMetadataURL}
+	for i, row := range response.Data.Objects {
+		if i >= irrObjectLimit {
+			out.Truncated = true
+			out.Completeness = "partial"
+			break
+		}
+		p, err := netip.ParsePrefix(row.Prefix)
+		asn, asnError := strconv.ParseUint(strings.TrimPrefix(row.Origin, "AS"), 10, 32)
+		class := "route"
+		if p.Addr().Is6() {
+			class = "route6"
+		}
+		if err != nil || p != p.Masked() || !p.Overlaps(requested) || row.Class != class || irrRegistryURLs[row.Source] == "" || !strings.HasPrefix(row.Origin, "AS") || asnError != nil || asn == 0 {
 			out.Completeness = "partial"
 			continue
+		}
+		id := ""
+		if row.ID != "" {
+			id = p.String() + "AS" + strconv.FormatUint(asn, 10)
+			if !strings.EqualFold(row.ID, id) {
+				out.Completeness = "partial"
+				id = ""
+			}
 		}
 		relation := "exact"
 		if p.Bits() < requested.Bits() {
@@ -115,87 +204,59 @@ func normalizeIRR(routes, metadata json.RawMessage, target Target, now time.Time
 		} else if p.Bits() > requested.Bits() {
 			relation = "contained"
 		}
-		class := "route"
-		if p.Addr().Is6() {
-			class = "route6"
-		}
-		sources := make([]string, 0, len(row.Routes))
-		for source := range row.Routes {
-			sources = append(sources, source)
-		}
-		sort.Strings(sources)
-		for _, source := range sources {
-			for _, object := range row.Routes[source] {
-				count++
-				if count > irrObjectLimit {
-					out.Truncated = true
-					out.Completeness = "partial"
-					continue
-				}
-				if !irrRegistryName.MatchString(source) || source == "RPKI" || len(object.ID) > 200 || object.ASN == 0 {
-					out.Completeness = "partial"
-					continue
-				}
-				out.Objects = append(out.Objects, IRRObject{Class: class, Prefix: p.String(), Origin: object.ASN, Registry: source, ID: object.ID, Relation: relation})
-			}
-		}
+		out.Objects = append(out.Objects, IRRObject{Class: class, Prefix: p.String(), Origin: uint32(asn), Registry: row.Source, ID: id, Relation: relation})
 	}
 	var meta struct {
-		LastUpdate struct {
-			IRR map[string]string `json:"irr"`
-		} `json:"last_update"`
+		Data *struct {
+			Registries []struct {
+				Name    string   `json:"source"`
+				Updated string   `json:"rpslDataUpdated"`
+				Classes []string `json:"objectClassFilter"`
+			} `json:"databaseStatus"`
+		} `json:"data"`
+		Errors []json.RawMessage `json:"errors"`
 	}
-	if json.Unmarshal(metadata, &meta) != nil || len(meta.LastUpdate.IRR) == 0 {
-		out.Completeness = "partial"
-	}
-	names := make([]string, 0, len(meta.LastUpdate.IRR))
-	for name := range meta.LastUpdate.IRR {
-		if name != "RPKI" {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		if len(out.Registries) >= 64 {
-			out.Completeness = "partial"
-			break
-		}
-		if !irrRegistryName.MatchString(name) {
-			out.Completeness = "partial"
-			continue
-		}
-		raw := meta.LastUpdate.IRR[name]
-		t, e := time.Parse("2006-01-02 15:04:05.999999999Z07:00", raw)
-		if e != nil {
-			t, e = time.Parse(time.RFC3339Nano, raw)
-		}
-		entry := IRRRegistry{Name: name, Freshness: "unknown"}
-		if e == nil && !t.After(now.Add(time.Minute)) {
-			entry.UpdatedAt = &t
-			entry.Freshness = "fresh"
-			if now.Sub(t) > 24*time.Hour {
-				entry.Freshness = "stale"
+	byName := map[string]IRRRegistry{}
+	if json.Unmarshal(metadata, &meta) == nil && meta.Data != nil && meta.Data.Registries != nil && len(meta.Errors) == 0 {
+		for _, row := range meta.Data.Registries {
+			if irrRegistryURLs[row.Name] == "" {
+				out.Completeness = "partial"
+				continue
 			}
+			if _, found := byName[row.Name]; found {
+				out.Completeness = "partial"
+				continue
+			}
+			entry := IRRRegistry{Name: row.Name, URL: irrRegistryURLs[row.Name], TimestampKind: "mirror_data_updated", Freshness: "unknown"}
+			if updated, err := time.Parse(time.RFC3339Nano, row.Updated); err == nil && !updated.After(now.Add(time.Minute)) {
+				entry.UpdatedAt = &updated
+				entry.Freshness = "fresh"
+				if now.Sub(updated) > 24*time.Hour {
+					entry.Freshness = "stale"
+				}
+			}
+			if !slices.Contains(row.Classes, "route") || !slices.Contains(row.Classes, "route6") {
+				out.Completeness = "partial"
+			}
+			byName[row.Name] = entry
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(irrRegistryURLs)) {
+		entry, found := byName[name]
+		if !found {
+			entry = IRRRegistry{Name: name, URL: irrRegistryURLs[name], TimestampKind: "mirror_data_updated", Freshness: "unknown"}
 		}
 		if entry.Freshness == "unknown" {
 			out.Completeness = "partial"
 		}
 		out.Registries = append(out.Registries, entry)
 	}
-	for _, object := range out.Objects {
-		if !slices.ContainsFunc(out.Registries, func(r IRRRegistry) bool { return r.Name == object.Registry }) {
-			out.Completeness = "partial"
-		}
-	}
-	if len(out.Registries) == 0 {
-		out.Completeness = "partial"
-	}
 	return out, nil
 }
 
 func decorateIRR(m Metric, target Target, now time.Time) Metric {
 	m.IRR = nil
-	if m.Name != "irr" || m.ObservedAt == nil || m.ObservedAt.After(now.Add(time.Minute)) || m.Status != "ok" && m.Status != "stale" {
+	if m.Name != "irr" || m.Source != "IRRd" || m.ObservedAt == nil || m.ObservedAt.After(now.Add(time.Minute)) || m.Status != "ok" && m.Status != "stale" {
 		return m
 	}
 	if m.ExpiresAt == nil || !now.Before(*m.ExpiresAt) {

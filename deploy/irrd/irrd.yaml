@@ -1,0 +1,56 @@
+irrd:
+  database_url: postgresql://irrd@irrd-postgres/irrd
+  redis_url: redis://irrd-redis:6379/0
+  piddir: /run/irrd
+  download_timeout: 120
+  auth:
+    gnupg_keyring: /var/lib/irrd/gnupg
+  email:
+    from: noreply@subregator.com
+    smtp: 127.0.0.1
+  server:
+    http:
+      interface: 0.0.0.0
+      port: 8000
+      workers: 1
+      url: http://subregator-irrd:8000/
+    whois:
+      interface: 127.0.0.1
+      port: 8043
+      max_connections: 1
+  rpki:
+    roa_source: null
+  log:
+    level: INFO
+  sources_default: [RIPE, RIPE-NONAUTH, ARIN, APNIC, LACNIC, AFRINIC]
+  sources:
+    RIPE:
+      object_class_filter: [route, route6]
+      import_timer: 86400
+      import_source:
+        - https://ftp.ripe.net/ripe/dbase/split/ripe.db.route.gz
+        - https://ftp.ripe.net/ripe/dbase/split/ripe.db.route6.gz
+    RIPE-NONAUTH:
+      object_class_filter: [route, route6]
+      import_timer: 86400
+      import_source:
+        - https://ftp.ripe.net/ripe/dbase/split/ripe-nonauth.db.route.gz
+        - https://ftp.ripe.net/ripe/dbase/split/ripe-nonauth.db.route6.gz
+    ARIN:
+      object_class_filter: [route, route6]
+      import_timer: 86400
+      import_source: https://ftp.arin.net/pub/rr/arin.db.gz
+    APNIC:
+      object_class_filter: [route, route6]
+      import_timer: 86400
+      import_source:
+        - https://ftp.apnic.net/apnic/whois/apnic.db.route.gz
+        - https://ftp.apnic.net/apnic/whois/apnic.db.route6.gz
+    LACNIC:
+      object_class_filter: [route, route6]
+      import_timer: 86400
+      import_source: https://irr.lacnic.net/lacnic.db.gz
+    AFRINIC:
+      object_class_filter: [route, route6]
+      import_timer: 86400
+      import_source: https://ftp.afrinic.net/dbase/afrinic.db.gz

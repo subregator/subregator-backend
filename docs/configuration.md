@@ -38,6 +38,8 @@ Settings are read from process environment; an explicit CLI flag wins. The nativ
 | `SUBREGATOR_IPINFO_LITE_TOKEN` | environment only  | optional free Lite token                                            |
 | `SUBREGATOR_FEEDS_DIR`         | `-feeds-dir`      | disabled                                                            |
 | `SUBREGATOR_PROVIDERS`         | `-providers`      | embedded registry                                                   |
+| `SUBREGATOR_IRR` | `-irr` | `false`; public normalized IRR collection needs registry-use approval |
+| `SUBREGATOR_IRRD_URL` | environment only | `http://subregator-irrd:8000/graphql/` |
 | `SUBREGATOR_NETWORK`           | `-network`        | `true`                                                              |
 | `SUBREGATOR_CORS_ORIGIN`       | `-cors-origin`    | disabled                                                            |
 | `SUBREGATOR_LOG_FORMAT`        | `-log-format`     | `text`                                                              |

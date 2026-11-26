@@ -3499,6 +3499,18 @@
               "stale",
               "unknown"
             ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Public link to the original registry or its export index."
+          },
+          "timestamp_kind": {
+            "type": "string",
+            "enum": [
+              "mirror_data_updated"
+            ],
+            "description": "updated_at is the last local IRRd data change, not an upstream object modification date or last successful poll."
           }
         },
         "required": [
@@ -3506,7 +3518,7 @@
           "freshness"
         ],
         "additionalProperties": false,
-        "description": "Source-reported last update, not object creation time or proof of mirror health. Local conservative age ceiling is 24 hours; missing or old dates cannot establish a passing comparison."
+        "description": "IRRd per-registry data-change timestamp and attribution. Local age ceiling is 24 hours; missing or old dates cannot establish a passing comparison. This is not proof of upstream mirror health or object creation time."
       },
       "IRRComparison": {
         "type": "object",
@@ -3607,7 +3619,8 @@
             "$ref": "#/components/schemas/IRRComparison"
           },
           "metadata_url": {
-            "type": "string"
+            "type": "string",
+            "description": "Public documentation of mirror coverage and provenance; the private GraphQL endpoint is omitted. Registry timestamps are embedded in this explanation."
           },
           "metadata_observed_at": {
             "type": "string",
@@ -3626,7 +3639,7 @@
           "metadata_url"
         ],
         "additionalProperties": false,
-        "description": "IRRexplorer route objects compared with separately dated RIS origins. Source scoped, not ownership or universal routing acceptance. Duplicates and conflicts across registries are preserved; containing or contained routes never satisfy an exact-prefix origin. Unknown, stale or partial data never establishes a passing comparison. No raw RPSL or source score is published. Collection is off until source quotas and display/retention rights are configured."
+        "description": "Route/route6 observations from the private Subregator IRRd mirror, compared with separately dated RIS origins. Coverage is RIPE, RIPE-NONAUTH, ARIN, APNIC, LACNIC and AFRINIC; RADB and other registries are absent. Duplicate and conflicting registrations are preserved; covering or contained routes never satisfy an exact-prefix origin. Unknown, stale, truncated or incomplete evidence never establishes a passing comparison. Raw RPSL, contact fields and the private mirror address are never published. Public REST/MCP reads use cached observations and do not query IRRd."
       },
       "ReportedAddress": {
         "type": "object",

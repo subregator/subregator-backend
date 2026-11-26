@@ -14,17 +14,35 @@ import (
 	"github.com/subregator/subregator-backend/internal/catalog"
 )
 
-func irrMetadataFixture(now time.Time) string {
-	b, _ := json.Marshal(map[string]any{"last_update": map[string]any{"irr": map[string]string{"RADB": now.UTC().Format(time.RFC3339Nano), "APNIC": now.UTC().Format(time.RFC3339Nano)}}})
-	return string(b)
+func irrMetadataFixture(now time.Time) string { return irrdStatusFixture(now) }
+
+func enableIRR(t *testing.T, s *Service) {
+	t.Helper()
+	if err := s.EnableIRR(DefaultIRRdURL); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func irrMetadataRequest(r *http.Request) bool {
+	var body struct {
+		Query string `json:"query"`
+	}
+	if r.Body != nil {
+		json.NewDecoder(r.Body).Decode(&body)
+	}
+	return strings.Contains(body.Query, "databaseStatus")
 }
 
 func irrFixture(prefix string, asns ...uint32) string {
 	rows := []any{}
-	for _, asn := range asns {
-		rows = append(rows, map[string]any{"asn": asn, "rpslPk": fmt.Sprintf("%sAS%d", prefix, asn), "rpslText": "private-contact@example.net", "rpkiStatus": "INVALID"})
+	class := "route"
+	if strings.Contains(prefix, ":") {
+		class = "route6"
 	}
-	b, _ := json.Marshal([]any{map[string]any{"prefix": prefix, "irrRoutes": map[string]any{"RADB": rows}, "bgpOrigins": []uint32{999}, "categoryOverall": "success"}})
+	for _, asn := range asns {
+		rows = append(rows, map[string]any{"objectClass": class, "prefix": prefix, "origin": fmt.Sprintf("AS%d", asn), "rpslPk": fmt.Sprintf("%sAS%d", prefix, asn), "source": "RIPE", "objectText": "private-contact@example.net", "rpkiStatus": "INVALID"})
+	}
+	b, _ := json.Marshal(map[string]any{"data": map[string]any{"rpslObjects": rows}, "bgpOrigins": []uint32{999}, "categoryOverall": "success"})
 	return string(b)
 }
 
@@ -37,7 +55,7 @@ func irrMetric(t *testing.T, prefix, routes, metadata string) Metric {
 	}
 	now, expires := time.Now().UTC(), time.Now().UTC().Add(time.Hour)
 	b, _ := json.Marshal(d)
-	return Metric{Name: "irr", Status: "ok", Source: "IRRexplorer", SourceURL: irrBase + "prefixes/prefix/" + prefix, Data: b, ObservedAt: &now, ExpiresAt: &expires}
+	return Metric{Name: "irr", Status: "ok", Source: "IRRd", SourceURL: irrMetadataURL, Data: b, ObservedAt: &now, ExpiresAt: &expires}
 }
 
 func TestIRRConsistencyScopesAndOutcomes(t *testing.T) {
@@ -164,7 +182,7 @@ func TestIRRCollectorBudgetFailuresAndCache(t *testing.T) {
 			var calls atomic.Int32
 			s := mockService(t, func(r *http.Request) (*http.Response, error) {
 				calls.Add(1)
-				if strings.HasSuffix(r.URL.Path, "metadata/") {
+				if irrMetadataRequest(r) {
 					return response(200, irrMetadataFixture(time.Now())), nil
 				}
 				if code == 200 {
@@ -174,7 +192,7 @@ func TestIRRCollectorBudgetFailuresAndCache(t *testing.T) {
 				out.Header.Set("Retry-After", "3600")
 				return out, nil
 			})
-			s.EnableIRR()
+			enableIRR(t, s)
 			overview := reportFixture(t).Metrics[0]
 			target, _ := ParseTarget("1.1.1.0/24")
 			m := s.metric(context.Background(), target, Query{overview: &overview}, "irr")
@@ -187,9 +205,9 @@ func TestIRRCollectorBudgetFailuresAndCache(t *testing.T) {
 			}
 			if code == 429 {
 				restarted := New(s.cache, true, "", 120)
-				restarted.EnableIRR()
+				enableIRR(t, restarted)
 				restarted.client.Transport = s.client.Transport
-				if _, err := restarted.request(context.Background(), irrBase+"metadata/", ""); err == nil || calls.Load() != 1 {
+				if _, err := restarted.irrd(context.Background(), `query { databaseStatus { source } }`, nil); err == nil || calls.Load() != 1 {
 					t.Fatal("source cooldown lost")
 				}
 			}
@@ -212,7 +230,7 @@ func TestIRRPartialMetadataAndObjectBounds(t *testing.T) {
 	if err != nil || !d.Truncated || len(d.Objects) != irrObjectLimit || d.Completeness != "partial" {
 		t.Fatal(d, err)
 	}
-	d, err = normalizeIRR([]byte(`[]`), []byte(`{}`), target, time.Now())
+	d, err = normalizeIRR([]byte(`{"data":{"rpslObjects":[]}}`), []byte(`{}`), target, time.Now())
 	if err != nil || d.Completeness != "partial" {
 		t.Fatal("metadata gap became absence", d, err)
 	}
@@ -223,8 +241,8 @@ func TestIRRAutomaticPublishOriginChangeAndRestart(t *testing.T) {
 	s := mockService(t, func(r *http.Request) (*http.Response, error) {
 		calls.Add(1)
 		switch {
-		case r.URL.Host == "irrexplorer.nlnog.net":
-			if strings.HasSuffix(r.URL.Path, "metadata/") {
+		case r.URL.Host == "subregator-irrd:8000":
+			if irrMetadataRequest(r) {
 				return response(200, irrMetadataFixture(time.Now())), nil
 			}
 			return response(200, irrFixture("1.1.1.0/24", 13335, 13335)), nil
@@ -236,7 +254,7 @@ func TestIRRAutomaticPublishOriginChangeAndRestart(t *testing.T) {
 			return response(503, `{}`), nil
 		}
 	})
-	s.EnableIRR()
+	enableIRR(t, s)
 	a := NewAutomatic(s)
 	store := reviewStore(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -280,7 +298,7 @@ func TestIRRMetadataFailureRetriesAndSharedBudget(t *testing.T) {
 		calls.Add(1)
 		return response(200, irrFixture("1.1.1.0/24", 13335)), nil
 	})
-	s.EnableIRR()
+	enableIRR(t, s)
 	s.rpm = 1
 	target, _ := ParseTarget("1.1.1.0/24")
 	overview := reportFixture(t).Metrics[0]
@@ -292,7 +310,7 @@ func TestIRRMetadataFailureRetriesAndSharedBudget(t *testing.T) {
 
 func TestIRRRegressionReadsCannotMutatePublishedReport(t *testing.T) {
 	s := New(nil, false, "", 120)
-	s.EnableIRR()
+	enableIRR(t, s)
 	a := NewAutomatic(s)
 	r := reportFixture(t)
 	r.Metrics = append(r.Metrics, irrMetric(t, r.Resource.Value, irrFixture(r.Resource.Value, 13335), irrMetadataFixture(time.Now())))
@@ -309,7 +327,7 @@ func TestIRRRegressionReadsCannotMutatePublishedReport(t *testing.T) {
 func TestIRRRegressionUnsupportedParametersNeverCollect(t *testing.T) {
 	var calls atomic.Int32
 	s := mockService(t, func(*http.Request) (*http.Response, error) { calls.Add(1); return response(200, `[]`), nil })
-	s.EnableIRR()
+	enableIRR(t, s)
 	for _, q := range []Query{
 		{Resource: "1.1.1.0/24", Checks: []string{"irr"}, ASN: 13335},
 		{Resource: "1.1.1.0/24", Checks: []string{"irr"}, Version: "1"},
@@ -339,7 +357,7 @@ func TestIRRHiddenPrefixesAndCancellation(t *testing.T) {
 		}
 		var calls atomic.Int32
 		s := mockService(t, func(*http.Request) (*http.Response, error) { calls.Add(1); return response(200, `[]`), nil })
-		s.EnableIRR()
+		enableIRR(t, s)
 		a := NewAutomatic(s)
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -354,14 +372,14 @@ func TestIRRHiddenPrefixesAndCancellation(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		started := make(chan struct{})
 		s := mockService(t, func(r *http.Request) (*http.Response, error) {
-			if strings.HasSuffix(r.URL.Path, "metadata/") {
+			if irrMetadataRequest(r) {
 				close(started)
 				<-r.Context().Done()
 				return nil, r.Context().Err()
 			}
 			return response(200, irrFixture("1.1.1.0/24", 13335)), nil
 		})
-		s.EnableIRR()
+		enableIRR(t, s)
 		ctx, cancel := context.WithCancel(context.Background())
 		target, _ := ParseTarget("1.1.1.0/24")
 		overview := reportFixture(t).Metrics[0]
@@ -389,7 +407,7 @@ func TestIRROversizedResponseCannotPass(t *testing.T) {
 	s := mockService(t, func(*http.Request) (*http.Response, error) {
 		return response(200, "["+strings.Repeat(" ", 1<<20)+"]"), nil
 	})
-	s.EnableIRR()
+	enableIRR(t, s)
 	r, err := s.Inspect(context.Background(), Query{Resource: "1.1.1.0/24", Checks: []string{"irr"}})
 	if err != nil || r.Metrics[0].Status != "unavailable" || r.Metrics[0].IRR != nil {
 		t.Fatal("oversized response accepted", err)
@@ -410,7 +428,7 @@ func TestIRRRegressionExpiredEvidenceCannotRemainConsistent(t *testing.T) {
 
 func TestIRRRegressionReadAgesStoredPassingExplanation(t *testing.T) {
 	s := New(nil, false, "", 120)
-	s.EnableIRR()
+	enableIRR(t, s)
 	a := NewAutomatic(s)
 	r := reportFixture(t)
 	r.Metrics = append(r.Metrics, irrMetric(t, r.Resource.Value, irrFixture(r.Resource.Value, 13335), irrMetadataFixture(time.Now())))
@@ -433,7 +451,7 @@ func TestIRRMultiOriginAndCrossRegistryConflict(t *testing.T) {
 	}{
 		{irrFixture(r.Resource.Value, 13335, 13336), "consistent", 0},
 		{irrFixture(r.Resource.Value, 13335), "missing_objects", 1},
-		{`[{"prefix":"1.1.1.0/24","irrRoutes":{"RADB":[{"asn":13335}],"APNIC":[{"asn":13337}]}}]`, "conflict", 1},
+		{`{"data":{"rpslObjects":[{"objectClass":"route","prefix":"1.1.1.0/24","source":"RIPE","origin":"AS13335"},{"objectClass":"route","prefix":"1.1.1.0/24","source":"APNIC","origin":"AS13337"}]}}`, "conflict", 1},
 	} {
 		report := r
 		report.Metrics = append(slices.Clone(r.Metrics), irrMetric(t, r.Resource.Value, tc.routes, irrMetadataFixture(time.Now())))

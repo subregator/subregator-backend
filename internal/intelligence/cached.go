@@ -57,6 +57,9 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 	return report, nil
 }
 func metricKey(target Target, q Query, name string) string {
+	if name == "irr" {
+		q.Version = "irrd-v1"
+	}
 	b, _ := json.Marshal(struct {
 		Resource string
 		Name     string
