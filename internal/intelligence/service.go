@@ -114,6 +114,8 @@ type Service struct {
 	flights             map[string]*call
 	window              time.Time
 	used                int
+	automaticUsed       int
+	publicDemandUntil   time.Time
 	httpSlots           chan struct{}
 	inspectSlots        chan struct{}
 	measurementSlots    chan struct{}
@@ -339,10 +341,21 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		if s.window.IsZero() || now.Sub(s.window) >= time.Minute {
 			s.window = now
 			s.used = 0
+			s.automaticUsed = 0
+		}
+		if !automatic {
+			s.publicDemandUntil = now.Add(5 * time.Minute)
+		}
+		automaticLimit := s.rpm
+		if now.Before(s.publicDemandUntil) {
+			automaticLimit = max(1, s.rpm-s.rpm/4)
 		}
 		turn := !automatic || len(s.budgetQueue) > 0 && s.budgetQueue[0] == ticket
-		if s.used < s.rpm && turn {
+		if s.used < s.rpm && turn && (!automatic || s.automaticUsed < automaticLimit) {
 			s.used++
+			if automatic {
+				s.automaticUsed++
+			}
 			s.mu.Unlock()
 			return func() { <-s.httpSlots }, nil
 		}

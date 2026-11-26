@@ -344,3 +344,55 @@ func TestSharedDROPSurvivesPrefixRemoval(t *testing.T) {
 		t.Fatal("prefix removal canceled the shared reserved dataset")
 	}
 }
+
+func TestPublicDemandReservesBudget(t *testing.T) {
+	s := New(nil, true, "", 4)
+	take := func(ctx context.Context) {
+		t.Helper()
+		release, err := s.acquireRequest(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		release()
+	}
+	take(context.Background())
+	s.window = time.Now().Add(-time.Minute)
+	automatic := context.WithValue(context.Background(), automaticBudgetKey{}, true)
+	for range 3 {
+		take(automatic)
+	}
+	ctx, cancel := context.WithTimeout(automatic, 20*time.Millisecond)
+	defer cancel()
+	if release, err := s.acquireRequest(ctx); err != context.DeadlineExceeded {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("background consumed public reserve: %v", err)
+	}
+	take(context.Background())
+	if _, err := s.acquireRequest(context.Background()); err != ErrBusy {
+		t.Fatalf("global budget exceeded: %v", err)
+	}
+}
+
+func TestAutomaticBudgetWithoutPublicDemand(t *testing.T) {
+	for _, rpm := range []int{1, 4} {
+		t.Run(fmt.Sprint(rpm), func(t *testing.T) {
+			s := New(nil, true, "", rpm)
+			if rpm == 1 {
+				s.publicDemandUntil = time.Now().Add(time.Minute)
+			}
+			ctx := context.WithValue(context.Background(), automaticBudgetKey{}, true)
+			for range rpm {
+				release, err := s.acquireRequest(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				release()
+			}
+			if s.used != rpm {
+				t.Fatalf("unused background capacity: %d", s.used)
+			}
+		})
+	}
+}

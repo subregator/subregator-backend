@@ -13,7 +13,7 @@ The single ingestion process runs six bounded queues: prefix overview, RPKI, rou
 - Automatic upstream budget waiters are FIFO. Waiting releases the HTTP slot; cancellation removes the waiter. At one request/minute, the first shared DROP evaluation for each family has priority because one feed covers every prefix in that family. Subsequent DROP requests join the same fair budget queue.
 - DROP uses one queue so its two family feed objects are not concurrently refreshed. Dataset validation, attribution, pending-save retry and persisted daily attempt reservations remain in force. A shared cached dataset serves many prefixes without additional downloads.
 - Catalogue changes are reconciled between completions and about once per second while idle. Removing or withholding a prefix cancels its individual jobs and removes scheduler metadata; later results are discarded. A shared DROP download uses the collector lifetime, so removing one prefix cannot cancel a reserved dataset needed by other prefixes. Requests already sent cannot be recalled. Initially hidden/private/reserved prefixes are never queued or reconstructed.
-- Public REST/MCP reads do not enqueue work, refresh sources or consume upstream budgets. Publication reuses the durable report/cache paths and conservative BGP/RPKI retention rules.
+- Cached REST/MCP reads do not enqueue work, refresh sources or consume upstream budgets. Explicit public lookups share the configured upstream budget. For five minutes after public demand, automatic collection uses at most 75% of each window (rounded up, at least one request), leaving capacity for lookups; the total limit is unchanged. Publication reuses the durable report/cache paths and conservative BGP/RPKI retention rules.
 
 ## Source retry windows
 
