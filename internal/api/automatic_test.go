@@ -28,19 +28,19 @@ func TestPublicChecksNeverTriggerUpstreams(t *testing.T) {
 	})
 	defer func() { http.DefaultTransport = old }()
 	s := &service{store: store(t, 1), extras: Services{Intelligence: intelligence.New(nil, true, "", 120)}}
-	report, e := s.inspect(context.Background(), intelligence.Query{Resource: "1.1.1.0/24", Checks: []string{"registration"}})
+	report, e := s.inspect(context.Background(), intelligence.Query{Resource: "1.1.1.0/24", Checks: []string{"asn_relationships", "announced_prefixes"}})
 	if e != nil {
 		t.Fatal(e)
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("public lookup triggered %d upstream requests", calls.Load())
 	}
-	if len(report.Metrics) != 1 || report.Metrics[0].Status != "pending" {
+	if len(report.Metrics) != 2 || report.Metrics[0].Status != "pending" {
 		t.Fatalf("missing observation must remain pending: %+v", report)
 	}
 	h := Handler(s.store, "", s.extras)
 	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, httptest.NewRequest("GET", "/api/v1/network?resource=1.1.1.0/24", nil))
+	h.ServeHTTP(rr, httptest.NewRequest("GET", "/api/v1/network?resource=1.1.1.0/24&checks=asn_relationships,announced_prefixes", nil))
 	if rr.Code != 200 || calls.Load() != 0 {
 		t.Fatalf("REST triggered upstream or failed: %d", rr.Code)
 	}

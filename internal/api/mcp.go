@@ -62,6 +62,10 @@ func (s *service) mcpHandler() http.Handler {
 		r, e := s.inspect(ctx, in)
 		return nil, r, e
 	})
+	mcp.AddTool(server, tool("lookup_network", "Look up a public IP, prefix or ASN using free BGP, topology, RPKI and registry sources; reuse fresh cache and enforce shared upstream limits"), func(ctx context.Context, _ *mcp.CallToolRequest, in intelligence.Query) (*mcp.CallToolResult, any, error) {
+		r, e := s.lookup(ctx, in)
+		return nil, r, e
+	})
 	mcp.AddTool(server, tool("network_checks", "List available free checks, input types, cache TTLs and source coverage limitations"), func(_ context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
 		return nil, map[string]any{"items": intelligence.Capabilities()}, nil
 	})

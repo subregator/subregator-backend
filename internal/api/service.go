@@ -314,6 +314,19 @@ func (s *service) inspect(ctx context.Context, q intelligence.Query) (intelligen
 	}
 	return result, nil
 }
+func (s *service) lookup(ctx context.Context, q intelligence.Query) (intelligence.Report, error) {
+	if s.extras.Intelligence == nil {
+		return intelligence.Report{}, &apiError{503, "checks_disabled", "Network checks are not configured"}
+	}
+	result, e := s.extras.Intelligence.Inspect(ctx, q)
+	if e != nil {
+		if errors.Is(e, intelligence.ErrBusy) {
+			return result, &apiError{429, "rate_limited", e.Error()}
+		}
+		return result, badQuery(e.Error())
+	}
+	return result, nil
+}
 func parseInspection(v url.Values) (intelligence.Query, error) {
 	if e := parseFilters(v, "resource checks start_time end_time version asn"); e != nil {
 		return intelligence.Query{}, e

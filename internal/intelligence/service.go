@@ -31,6 +31,8 @@ type Definition struct {
 }
 
 var definitions = map[string]Definition{
+	"asn_relationships":    {Name: "asn_relationships", Source: "CAIDA ASRank", Description: "Inferred upstreams, downstreams and peers with ASN names and topology ranks", Coverage: "CAIDA inferred relationships, not confirmed contracts or reachability; first 500 links with explicit truncation", TTLSeconds: 86400, Kinds: []string{"ip", "prefix", "asn"}},
+	"announced_prefixes":   {Name: "announced_prefixes", Source: "RIPEstat", Description: "IPv4 and IPv6 prefixes announced by origin ASNs", Coverage: "RIS observations over the source default two-week window, minimum 10 peers; includes timelines, not ownership", TTLSeconds: 3600, Kinds: []string{"ip", "prefix", "asn"}},
 	"spamhaus_zen":         {Name: "spamhaus_zen", Source: "Spamhaus ZEN", Description: "Optional licensed SBL/XBL/PBL IP lookup; one first-address sample per prefix, never whole-subnet approval", Coverage: "One queried IP only; PBL is outbound mail policy, not abuse; source access and public use require approval", TTLSeconds: 3600, Kinds: []string{"ip", "prefix"}},
 	"abuse":                {Name: "abuse", Source: "AbuseIPDB", Description: "Optional source report summaries for IPv4 /24-/31 and IPv6 /120-/127, 30-day window; off until account and data use are approved", Coverage: "Source-reported addresses in the returned search range; not cleanliness, tenant attribution or resolution", TTLSeconds: 86400, Kinds: []string{"prefix"}},
 	"irr":                  {Name: "irr", Source: "IRRd", Description: "IRR route/route6 objects compared with observed BGP origins; optional and off until source publication is configured", Coverage: "Daily route/route6 mirror: RIPE, RIPE-NONAUTH, ARIN, APNIC, LACNIC, AFRINIC; RADB absent; not ownership or universal routing acceptance", TTLSeconds: 3600, Kinds: []string{"prefix"}},
@@ -45,7 +47,7 @@ var definitions = map[string]Definition{
 	"transfer_history":     {Name: "transfer_history", Source: "RIPEstat", Description: "Published registry transfer events", Coverage: "May cover larger containing blocks; not a complete ownership ledger", TTLSeconds: 86400, Kinds: []string{"ip", "prefix"}},
 	"rpki":                 {Name: "rpki", Source: "RIPEstat", Description: "Validate prefix/origin pairs against ROAs", Coverage: "Current origin validation; not reputation or ownership", TTLSeconds: 300, Kinds: []string{"ip", "prefix"}},
 	"asn_overview":         {Name: "asn_overview", Source: "RIPEstat", Description: "ASN name and announced address space", Coverage: "Current ASN data", TTLSeconds: 3600, Kinds: []string{"asn"}},
-	"asn_neighbours":       {Name: "asn_neighbours", Source: "RIPEstat", Description: "Upstream/downstream or peer relationships of origin ASNs", Coverage: "Observed BGP adjacency does not prove packet connectivity", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
+	"asn_neighbours":       {Name: "asn_neighbours", Source: "RIPEstat", Description: "Observed left/right/uncertain AS-path neighbours of origin ASNs", Coverage: "RIS adjacency does not classify commercial upstream, downstream or peer relationships", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
 	"rdap":                 {Name: "rdap", Source: "RIR RDAP", Description: "Authoritative registration range and organization metadata", Coverage: "Current covering registration block; public registry records only", TTLSeconds: 21600, Kinds: []string{"ip", "prefix", "asn"}},
 	"ipinfo_lite":          {Name: "ipinfo_lite", Source: "IPinfo Lite", Description: "Free country and ASN data for one address", Coverage: "IP-level data; no subnet reputation score or paid privacy fields", TTLSeconds: 86400, Kinds: []string{"ip"}, TokenRequired: true},
 }
@@ -263,6 +265,9 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 		if result.RetryAt != nil && result.RetryAt.After(expires) {
 			expires = *result.RetryAt
 		}
+		if result.Status == "ok" && result.ExpiresAt != nil && result.ExpiresAt.Before(expires) {
+			expires = *result.ExpiresAt
+		}
 		result.ExpiresAt = &expires
 		if s.cache != nil && ctx.Err() == nil {
 			if b, e := json.Marshal(result); e == nil {
@@ -403,6 +408,11 @@ func (s *Service) readRequest(ctx context.Context, r *http.Request, auth string,
 	}
 	response, e := s.client.Do(r)
 	if e != nil {
+		if response != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
+			if location, err := response.Location(); err == nil {
+				return nil, &sourceRedirect{location.String()}
+			}
+		}
 		return nil, errors.New("upstream request failed")
 	}
 	defer response.Body.Close()
@@ -463,6 +473,15 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	var result Metric
 	var e error
 	switch m.Name {
+	case "asn_relationships", "announced_prefixes":
+		if target.Kind != "asn" {
+			result, e = s.originTopology(ctx, target, q, m.Name)
+		} else if m.Name == "asn_relationships" {
+			result, e = s.relationships(ctx, target)
+		} else {
+			result, e = s.announcedPrefixes(ctx, target)
+		}
+
 	case "spamhaus_zen":
 		result, e = s.zen(ctx, target)
 	case "abuse":
@@ -557,6 +576,7 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	m.Data = result.Data
 	m.ObservedAt = result.ObservedAt
 	m.SourceURL = result.SourceURL
+	m.ExpiresAt = result.ExpiresAt
 	m.Registration = result.Registration
 	m.IRR = result.IRR
 	m.Abuse = result.Abuse
