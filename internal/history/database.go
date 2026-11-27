@@ -174,7 +174,7 @@ func (d *DB) CachePut(ctx context.Context, key string, payload json.RawMessage, 
 	if _, err = tx.ExecContext(ctx, `INSERT INTO check_cache(key,payload,expires_at,touched_at) VALUES($1,$2,$3,$4) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload,expires_at=excluded.expires_at,touched_at=excluded.touched_at`, key, []byte(payload), expires.UnixMilli(), time.Now().UnixMilli()); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM check_cache WHERE key IN (SELECT key FROM check_cache WHERE key NOT LIKE 'drop:%' ORDER BY touched_at DESC,key OFFSET 2000)`); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM check_cache WHERE key IN (SELECT key FROM check_cache WHERE key NOT LIKE 'drop:%' ORDER BY touched_at DESC,key OFFSET 50000)`); err != nil {
 		return err
 	}
 	return tx.Commit()

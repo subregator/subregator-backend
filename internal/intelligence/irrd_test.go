@@ -219,3 +219,103 @@ func TestIRRdRejectsRetiredEvidence(t *testing.T) {
 		}
 	})
 }
+
+func TestIRRdDoesNotSpendExternalBudget(t *testing.T) {
+	s := mockService(t, func(r *http.Request) (*http.Response, error) {
+		if irrMetadataRequest(r) {
+			return response(200, irrdStatusFixture(time.Now())), nil
+		}
+		return response(200, irrFixture("1.1.1.0/24", 13335)), nil
+	})
+	enableIRR(t, s)
+	s.rpm = 1
+	release, err := s.acquireRequest(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	target, _ := ParseTarget("1.1.1.0/24")
+	m, err := s.irr(context.Background(), target)
+	if err != nil || m.IRR == nil || m.IRR.Completeness != "complete" || s.used != 1 {
+		t.Fatalf("private mirror consumed or waited for external allowance: %+v %v used=%d", m, err, s.used)
+	}
+	for range cap(s.httpSlots) {
+		s.httpSlots <- struct{}{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := s.irrd(ctx, `query { databaseStatus { source } }`, nil); err != context.DeadlineExceeded {
+		t.Fatal("mirror bypassed shared concurrency or cancellation", err)
+	}
+	for range cap(s.httpSlots) {
+		<-s.httpSlots
+	}
+}
+
+func TestIRRdSharesMetadataAcrossPrefixes(t *testing.T) {
+	metadataCalls := 0
+	s := mockService(t, func(r *http.Request) (*http.Response, error) {
+		var body struct {
+			Query     string
+			Variables struct{ Prefix string }
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if strings.Contains(body.Query, "databaseStatus") {
+			metadataCalls++
+			return response(200, irrdStatusFixture(time.Now())), nil
+		}
+		return response(200, irrFixture(body.Variables.Prefix, 13335)), nil
+	})
+	enableIRR(t, s)
+	var captured *time.Time
+	for _, prefix := range []string{"1.1.1.0/24", "8.8.8.0/24", "9.9.9.0/24"} {
+		target, _ := ParseTarget(prefix)
+		m, err := s.irr(context.Background(), target)
+		if err != nil || m.IRR == nil || m.IRR.Completeness != "complete" || m.IRR.MetadataObservedAt == nil {
+			t.Fatal(m, err)
+		}
+		if captured != nil && !captured.Equal(*m.IRR.MetadataObservedAt) {
+			t.Fatal("shared metadata capture time was rewritten")
+		}
+		captured = m.IRR.MetadataObservedAt
+	}
+	if metadataCalls != 1 || s.stats["IRRd"].Requests != 4 {
+		t.Fatal("common metadata requested for every prefix", metadataCalls, s.stats)
+	}
+}
+
+func TestIRRdMetadataRefreshAndCancellation(t *testing.T) {
+	started, resume := make(chan struct{}), make(chan struct{})
+	calls := 0
+	s := mockService(t, func(r *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			close(started)
+			<-resume
+		}
+		return response(200, irrdStatusFixture(time.Now())), nil
+	})
+	enableIRR(t, s)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, _, err := s.mirrorMetadata(context.Background(), nil); err != nil {
+			t.Error(err)
+		}
+	}()
+	<-started
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := s.mirrorMetadata(ctx, nil); err != context.Canceled {
+		t.Fatal("metadata waiter ignored cancellation", err)
+	}
+	close(resume)
+	<-done
+	if _, _, err := s.mirrorMetadata(context.Background(), nil); err != nil || calls != 1 {
+		t.Fatal("finished metadata not shared", calls, err)
+	}
+	s.irrdMetadata.observedAt = time.Now().Add(-6 * time.Minute)
+	if _, _, err := s.mirrorMetadata(context.Background(), nil); err != nil || calls != 2 {
+		t.Fatal("expired metadata not refreshed", calls, err)
+	}
+}

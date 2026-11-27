@@ -105,7 +105,7 @@ func (d *DB) SaveObservation(ctx context.Context, r intelligence.ArchivedObserva
 			return err
 		}
 		r.Gap = !bytes.Equal(scope, previousScope) || !previousComparable || !r.Comparable || previous.ExpiresAt == nil || !collected.Before(*previous.ExpiresAt)
-		if !collected.After(previousTime) {
+		if !collected.Truncate(time.Microsecond).After(previousTime) {
 			r.Event = "out_of_order"
 			r.Comparable = false
 			r.Gap = true

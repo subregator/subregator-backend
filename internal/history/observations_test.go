@@ -211,7 +211,7 @@ func ptrTime(t time.Time) *time.Time { return &t }
 func TestObservationConflictingReplayCannotReplaceBaseline(t *testing.T) {
 	d, _ := setup(t)
 	ctx := context.Background()
-	at := time.Now().UTC().Add(-time.Hour)
+	at := time.Now().UTC().Add(-time.Hour).Truncate(time.Second).Add(123456789 * time.Nanosecond)
 	first := archiveFixture("1.1.1.0/24", "spamhaus_drop", `"listed"`, at)
 	conflict := first
 	conflict.State = json.RawMessage(`"not_listed"`)
