@@ -1,6 +1,8 @@
 package intelligence
 
 import (
+	"context"
+	"errors"
 	"net/url"
 	"sort"
 	"strings"
@@ -11,12 +13,84 @@ import (
 
 type UpstreamStats struct {
 	Source       string  `json:"source"`
+	Redirects    uint64  `json:"redirects"`
 	Requests     uint64  `json:"requests"`
 	Failures     uint64  `json:"failures"`
 	RateLimited  uint64  `json:"rate_limited"`
 	AuthFailures uint64  `json:"auth_failures"`
 	NoData       uint64  `json:"no_data"`
 	DurationMS   float64 `json:"duration_ms"`
+}
+
+type CheckWorkStats struct {
+	Check             string  `json:"check"`
+	HTTPAttempts      uint64  `json:"http_attempts"`
+	Redirects         uint64  `json:"redirects"`
+	HTTPFailures      uint64  `json:"http_failures"`
+	ExternalRequests  uint64  `json:"external_requests"`
+	PrivateRequests   uint64  `json:"private_requests"`
+	SuccessfulChecks  uint64  `json:"successful_checks"`
+	FailedChecks      uint64  `json:"failed_checks"`
+	NoDataChecks      uint64  `json:"no_data_checks"`
+	DeferredChecks    uint64  `json:"deferred_checks"`
+	BudgetDenials     uint64  `json:"budget_denials"`
+	BudgetWaits       uint64  `json:"budget_waits"`
+	BudgetWaitSeconds float64 `json:"budget_wait_seconds"`
+}
+
+type checkWorkKey struct{}
+
+func checkWorkName(ctx context.Context) string {
+	name, _ := ctx.Value(checkWorkKey{}).(string)
+	if _, ok := definitions[name]; !ok && name != "spamhaus_drop" {
+		return "other"
+	}
+	return name
+}
+
+func (s *Service) updateWork(ctx context.Context, update func(*CheckWorkStats)) {
+	name := checkWorkName(ctx)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.workStats == nil {
+		s.workStats = map[string]CheckWorkStats{}
+	}
+	stats := s.workStats[name]
+	stats.Check = name
+	update(&stats)
+	s.workStats[name] = stats
+}
+
+func (s *Service) recordCheck(ctx context.Context, m Metric) {
+	s.updateWork(ctx, func(stats *CheckWorkStats) {
+		switch m.Status {
+		case "ok":
+			stats.SuccessfulChecks++
+		case "no_data":
+			stats.NoDataChecks++
+		case "rate_limited", "pending", "disabled", "not_configured", "not_applicable":
+			stats.DeferredChecks++
+		default:
+			stats.FailedChecks++
+		}
+	})
+}
+
+func (s *Service) recordHTTPRequest(ctx context.Context, raw string, status int, err error, elapsed time.Duration) {
+	s.recordRequest(raw, status, err, elapsed)
+	var redirect *sourceRedirect
+	s.updateWork(ctx, func(stats *CheckWorkStats) {
+		stats.HTTPAttempts++
+		if status >= 300 && status < 400 {
+			stats.Redirects++
+		}
+		if err != nil && status != 404 && !errors.As(err, &redirect) {
+			stats.HTTPFailures++
+		}
+		if s.upstreamName(raw) == "IRRd" || s.upstreamName(raw) == "Routinator" {
+			stats.PrivateRequests++
+		}
+	})
 }
 
 type CheckCoverage struct {
@@ -31,27 +105,31 @@ type CheckCoverage struct {
 }
 
 type CollectionStatus struct {
-	SchedulerPolicy            string          `json:"scheduler_policy"`
-	DueJobs                    int             `json:"due_jobs"`
-	RunningJobs                int             `json:"running_jobs"`
-	GeneratedAt                time.Time       `json:"generated_at"`
-	ProcessStartedAt           time.Time       `json:"process_started_at"`
-	EligiblePrefixes           int             `json:"eligible_prefixes"`
-	DuePrefixes                int             `json:"due_prefixes"`
-	UnscheduledPrefixes        int             `json:"unscheduled_prefixes"`
-	OldestDueSeconds           *float64        `json:"oldest_due_seconds"`
-	Checks                     []CheckCoverage `json:"checks"`
-	Upstreams                  []UpstreamStats `json:"upstreams"`
-	RequestBudgetRPM           int             `json:"request_budget_rpm"`
-	BudgetDenials              uint64          `json:"budget_denials"`
-	BudgetWaits                uint64          `json:"budget_waits"`
-	BudgetWaitSeconds          float64         `json:"budget_wait_seconds"`
-	PersistenceFailures        uint64          `json:"persistence_failures"`
-	SchedulerSweepFloorSeconds float64         `json:"scheduler_sweep_floor_seconds"`
-	Semantics                  string          `json:"semantics"`
+	SchedulerPolicy            string           `json:"scheduler_policy"`
+	DueJobs                    int              `json:"due_jobs"`
+	RunningJobs                int              `json:"running_jobs"`
+	GeneratedAt                time.Time        `json:"generated_at"`
+	ProcessStartedAt           time.Time        `json:"process_started_at"`
+	EligiblePrefixes           int              `json:"eligible_prefixes"`
+	DuePrefixes                int              `json:"due_prefixes"`
+	UnscheduledPrefixes        int              `json:"unscheduled_prefixes"`
+	OldestDueSeconds           *float64         `json:"oldest_due_seconds"`
+	Work                       []CheckWorkStats `json:"work"`
+	Checks                     []CheckCoverage  `json:"checks"`
+	Upstreams                  []UpstreamStats  `json:"upstreams"`
+	RequestBudgetRPM           int              `json:"request_budget_rpm"`
+	BudgetDenials              uint64           `json:"budget_denials"`
+	BudgetWaits                uint64           `json:"budget_waits"`
+	BudgetWaitSeconds          float64          `json:"budget_wait_seconds"`
+	PersistenceFailures        uint64           `json:"persistence_failures"`
+	SchedulerSweepFloorSeconds float64          `json:"scheduler_sweep_floor_seconds"`
+	Semantics                  string           `json:"semantics"`
 }
 
 func (s *Service) upstreamName(raw string) string {
+	if s.routinatorURL != "" && strings.HasPrefix(raw, s.routinatorURL+"/") {
+		return "Routinator"
+	}
 	if raw == s.irrdURL {
 		return "IRRd"
 	}
@@ -90,7 +168,11 @@ func (s *Service) recordRequest(raw string, status int, err error, elapsed time.
 	r.Source = name
 	r.Requests++
 	r.DurationMS += float64(elapsed) / float64(time.Millisecond)
-	if err != nil && status != 404 {
+	var redirect *sourceRedirect
+	if status >= 300 && status < 400 {
+		r.Redirects++
+	}
+	if err != nil && status != 404 && !errors.As(err, &redirect) {
 		r.Failures++
 	}
 	if status == 429 {
@@ -139,7 +221,7 @@ func publishedPrefixes(store *catalog.Store) map[string]bool {
 func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 	now := time.Now().UTC()
 	active := publishedPrefixes(store)
-	out := CollectionStatus{GeneratedAt: now, EligiblePrefixes: len(active), Checks: []CheckCoverage{}, Upstreams: []UpstreamStats{}, SchedulerPolicy: "per_check_ttl", Semantics: "process_local_collection_health_not_subnet_safety"}
+	out := CollectionStatus{GeneratedAt: now, EligiblePrefixes: len(active), Checks: []CheckCoverage{}, Upstreams: []UpstreamStats{}, Work: []CheckWorkStats{}, SchedulerPolicy: "per_check_ttl", Semantics: "process_local_collection_health_not_subnet_safety"}
 	names := []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "spamhaus_drop", "irr", "abuse", "spamhaus_zen"}
 	names = append(names, a.service.historicalChecks...)
 	a.mu.RLock()
@@ -160,6 +242,9 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 	}
 	for _, name := range names {
 		c := CheckCoverage{Name: name, Source: definitions[name].Source, Collection: map[string]int{}, Freshness: map[string]int{}}
+		if name == "rpki" {
+			c.Source = a.service.rpkiSource()
+		}
 		if name == "spamhaus_drop" {
 			c.Source = "Spamhaus DROP"
 		}
@@ -238,10 +323,19 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 	out.ProcessStartedAt, out.RequestBudgetRPM = s.startedAt, s.rpm
 	out.BudgetDenials, out.BudgetWaits, out.BudgetWaitSeconds = s.budgetDenials, s.budgetWaits, s.budgetWaitDuration.Seconds()
 	out.PersistenceFailures = s.persistenceFailures
+	for _, stats := range s.workStats {
+		out.Work = append(out.Work, stats)
+	}
 	for _, stats := range s.stats {
 		out.Upstreams = append(out.Upstreams, stats)
 	}
 	s.mu.Unlock()
+	sort.Slice(out.Work, func(i, j int) bool { return out.Work[i].Check < out.Work[j].Check })
 	sort.Slice(out.Upstreams, func(i, j int) bool { return out.Upstreams[i].Source < out.Upstreams[j].Source })
 	return out
+}
+
+func (s *Service) recordWorkBudgetWait(ctx context.Context, elapsed time.Duration) {
+	s.recordBudgetWait(elapsed)
+	s.updateWork(ctx, func(stats *CheckWorkStats) { stats.BudgetWaits++; stats.BudgetWaitSeconds += elapsed.Seconds() })
 }

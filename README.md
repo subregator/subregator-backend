@@ -51,6 +51,8 @@ Prefer Docker? Follow the [Compose setup](docs/deployment.md#containers) to run 
 | MCP Streamable HTTP  | `http://localhost:8080/mcp`                                       |
 | Liveness / readiness | `/healthz` / `/readyz`                                            |
 
+The [cached subnet report](docs/report.md) combines published offers, calculated quote costs, current checks and a bounded timeline through `/api/v1/report` and MCP `subnet_report`.
+
 See the [API and data reference](docs/api.md) for filters, pagination, history, source policies and MCP configuration. Use `/api/v1/network` for cached observations or `/api/v1/network/lookup?resource=163.5.251.0%2F24&checks=all` for on-demand collection. The [network evidence contract](docs/network-checks.md) covers topology, geolocation, whole-prefix DNSBL progress, active ping/traceroute and bounded HTTP throughput.
 
 ## Development
@@ -77,3 +79,7 @@ Follow the [backend roadmap issues](https://github.com/subregator/subregator-bac
 See [subnet market and price history](docs/subnet-market.md) for exact-prefix seller comparison, quoted costs, provider gaps, REST/MCP pagination and explicit parent/child relationships.
 
 [Durable observation history](docs/observation-history.md): opt-in normalized check storage, conservative change bounds and cached-only REST/MCP queries.
+
+Collection diagnostics and counter units: [collection counters](docs/collection-metrics.md).
+
+Private current RPKI validation can use [Routinator](docs/rpki.md); RIPEstat remains the default until a bounded comparison pilot succeeds.

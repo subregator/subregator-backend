@@ -50,7 +50,7 @@ var definitions = map[string]Definition{
 	"registration_history": {Name: "registration_history", Source: "RIPEstat", Description: "Versions of registry objects with optional version/time selection", Coverage: "RIPE Database only; other RIR histories are not covered", TTLSeconds: 3600, Kinds: []string{"ip", "prefix", "asn"}},
 	"allocation_history":   {Name: "allocation_history", Source: "RIPEstat", Description: "Published RIR allocation history", Coverage: "Registry allocations, not every private commercial transfer", TTLSeconds: 86400, Kinds: []string{"ip", "prefix", "asn"}},
 	"transfer_history":     {Name: "transfer_history", Source: "RIPEstat", Description: "Published registry transfer events", Coverage: "May cover larger containing blocks; not a complete ownership ledger", TTLSeconds: 86400, Kinds: []string{"ip", "prefix"}},
-	"rpki":                 {Name: "rpki", Source: "RIPEstat", Description: "Validate prefix/origin pairs against ROAs", Coverage: "Current origin validation; not reputation or ownership", TTLSeconds: 300, Kinds: []string{"ip", "prefix"}},
+	"rpki":                 {Name: "rpki", Source: "Configured RPKI validator", Description: "Validate prefix/origin pairs against ROAs; RIPEstat by default or an explicitly configured private Routinator", Coverage: "Current origin validation; not reputation or ownership", TTLSeconds: 300, Kinds: []string{"ip", "prefix"}},
 	"asn_overview":         {Name: "asn_overview", Source: "RIPEstat", Description: "ASN name and announced address space", Coverage: "Current ASN data", TTLSeconds: 3600, Kinds: []string{"asn"}},
 	"asn_neighbours":       {Name: "asn_neighbours", Source: "RIPEstat", Description: "Observed left/right/uncertain AS-path neighbours of origin ASNs", Coverage: "RIS adjacency does not classify commercial upstream, downstream or peer relationships", TTLSeconds: 300, Kinds: []string{"ip", "prefix", "asn"}},
 	"rdap":                 {Name: "rdap", Source: "RIR RDAP", Description: "Authoritative registration range and organization metadata", Coverage: "Current covering registration block; public registry records only", TTLSeconds: 21600, Kinds: []string{"ip", "prefix", "asn"}},
@@ -102,6 +102,10 @@ type call struct {
 	result Metric
 }
 type Service struct {
+	routinatorURL       string
+	routinatorSlots     chan struct{}
+	routinatorChecked   time.Time
+	routinatorHealthy   bool
 	historicalChecks    []string
 	historyChecks       []string
 	spamhausEnabled     bool
@@ -126,6 +130,7 @@ type Service struct {
 	inspectSlots        chan struct{}
 	measurementSlots    chan struct{}
 	measurementPollAt   time.Time
+	workStats           map[string]CheckWorkStats
 	stats               map[string]UpstreamStats
 	startedAt           time.Time
 	budgetDenials       uint64
@@ -200,7 +205,7 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 	if m.Status != "pending" {
 		return m
 	}
-	key := metricKey(target, q, name)
+	key := s.cacheKey(target, q, name)
 	var previous Metric
 	cached := func() bool {
 		if s.cache != nil {
@@ -214,6 +219,9 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 						previous = Metric{}
 						return false
 					}
+				}
+				if name == "rpki" && s.routinatorURL != "" && !s.routinatorUsable() {
+					return false
 				}
 				previous.Cached = true
 				return true
@@ -361,6 +369,14 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		turn := !automatic || len(s.budgetQueue) > 0 && s.budgetQueue[0] == ticket
 		if s.used < s.rpm && turn && (!automatic || s.automaticUsed < automaticLimit) {
 			s.used++
+			name := checkWorkName(ctx)
+			if s.workStats == nil {
+				s.workStats = map[string]CheckWorkStats{}
+			}
+			stats := s.workStats[name]
+			stats.Check = name
+			stats.ExternalRequests++
+			s.workStats[name] = stats
 			if automatic {
 				s.automaticUsed++
 			}
@@ -377,6 +393,14 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		if !automatic {
 			s.mu.Lock()
 			s.budgetDenials++
+			name := checkWorkName(ctx)
+			if s.workStats == nil {
+				s.workStats = map[string]CheckWorkStats{}
+			}
+			stats := s.workStats[name]
+			stats.Check = name
+			stats.BudgetDenials++
+			s.workStats[name] = stats
 			s.mu.Unlock()
 			return nil, ErrBusy
 		}
@@ -385,13 +409,13 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			s.recordBudgetWait(time.Since(started))
+			s.recordWorkBudgetWait(ctx, time.Since(started))
 			return nil, ctx.Err()
 		case <-timer.C:
-			s.recordBudgetWait(time.Since(started))
+			s.recordWorkBudgetWait(ctx, time.Since(started))
 		case <-changed:
 			timer.Stop()
-			s.recordBudgetWait(time.Since(started))
+			s.recordWorkBudgetWait(ctx, time.Since(started))
 		}
 	}
 }
@@ -424,7 +448,7 @@ func (s *Service) readRequest(ctx context.Context, r *http.Request, auth string,
 	}
 	started := time.Now()
 	status := 0
-	defer func() { s.recordRequest(rawURL, status, err, time.Since(started)) }()
+	defer func() { s.recordHTTPRequest(ctx, rawURL, status, err, time.Since(started)) }()
 	r.Header.Set("User-Agent", "Subregator/0.2 (+https://github.com/subregator/subregator-backend)")
 	r.Header.Set("Accept", "application/json, application/rdap+json")
 	if auth != "" {
@@ -436,6 +460,9 @@ func (s *Service) readRequest(ctx context.Context, r *http.Request, auth string,
 	}
 	response, e := s.client.Do(r)
 	if e != nil {
+		if response != nil {
+			status = response.StatusCode
+		}
 		if response != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
 			if location, err := response.Location(); err == nil {
 				return nil, &sourceRedirect{location.String()}
@@ -497,7 +524,9 @@ func (s *Service) ripe(ctx context.Context, endpoint string, params url.Values) 
 	}
 	return Metric{SourceURL: u, ObservedAt: observedNow(), Data: envelope.Data}, nil
 }
-func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Metric) Metric {
+func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Metric) (out Metric) {
+	ctx = context.WithValue(ctx, checkWorkKey{}, m.Name)
+	defer func() { s.recordCheck(ctx, out) }()
 	var result Metric
 	var e error
 	switch m.Name {
@@ -711,7 +740,15 @@ func (s *Service) rpki(ctx context.Context, target Target, q Query) (Metric, err
 			q.overview = &overview
 		}
 	}
-	prefix, asns, e := s.origins(ctx, target, q)
+	var prefix string
+	var asns []uint32
+	var e error
+	if s.routinatorURL != "" && target.Kind == "prefix" && q.ASN != 0 {
+		prefix = target.Value
+		asns = []uint32{q.ASN}
+	} else {
+		prefix, asns, e = s.origins(ctx, target, q)
+	}
 	if e != nil {
 		return Metric{}, e
 	}
@@ -721,12 +758,27 @@ func (s *Service) rpki(ctx context.Context, target Target, q Query) (Metric, err
 			return Metric{}, errors.New("exact origin observation required")
 		}
 	}
+	var validatorUpdated time.Time
+	if s.routinatorURL != "" {
+		var err error
+		validatorUpdated, err = s.routinatorStatus(ctx)
+		if err != nil {
+			return Metric{}, err
+		}
+	}
+	var validatorExpires *time.Time
 	results := []any{}
 	successes := 0
 	var lastError error
 	var retry *time.Time
 	for _, asn := range asns[:min(4, len(asns))] {
-		m, err := s.ripe(ctx, "rpki-validation", url.Values{"resource": {strings.TrimPrefix(asnTarget(asn), "AS")}, "prefix": {prefix}})
+		var m Metric
+		var err error
+		if s.routinatorURL != "" {
+			m, err = s.routinatorValidation(ctx, prefix, asn, validatorUpdated)
+		} else {
+			m, err = s.ripe(ctx, "rpki-validation", url.Values{"resource": {strings.TrimPrefix(asnTarget(asn), "AS")}, "prefix": {prefix}})
+		}
 		if err != nil {
 			lastError = err
 			var limited *sourceLimited
@@ -736,6 +788,9 @@ func (s *Service) rpki(ctx context.Context, target Target, q Query) (Metric, err
 			results = append(results, map[string]any{"asn": asn, "data": nil})
 		} else {
 			successes++
+			if m.ExpiresAt != nil && (validatorExpires == nil || m.ExpiresAt.Before(*validatorExpires)) {
+				validatorExpires = m.ExpiresAt
+			}
 			results = append(results, map[string]any{"asn": asn, "source_url": m.SourceURL, "observed_at": m.ObservedAt, "data": m.Data})
 		}
 	}
@@ -757,7 +812,13 @@ func (s *Service) rpki(ctx context.Context, target Target, q Query) (Metric, err
 	}
 
 	b, _ := json.Marshal(map[string]any{"prefix": prefix, "origins": results, "origin_limit": 4, "basis": basis, "truncated": truncated, "origin_completeness": originCompleteness, "origin_observed_at": overview.ObservedAt, "origin_expires_at": overview.ExpiresAt})
-	return Metric{Data: b, ObservedAt: observedNow(), RetryAt: retry, SourceURL: "https://stat.ripe.net/docs/data-api/api-endpoints/rpki-validation"}, nil
+	sourceURL := "https://stat.ripe.net/docs/data-api/api-endpoints/rpki-validation"
+	var updated *time.Time
+	if s.routinatorURL != "" {
+		sourceURL = routinatorSourceURL
+		updated = &validatorUpdated
+	}
+	return Metric{Data: b, ObservedAt: observedNow(), RetryAt: retry, SourceURL: sourceURL, SourceUpdatedAt: updated, ExpiresAt: validatorExpires}, nil
 }
 func (s *Service) neighbours(ctx context.Context, target Target, q Query) (Metric, error) {
 	_, asns, e := s.origins(ctx, target, q)

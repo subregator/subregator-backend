@@ -1600,6 +1600,111 @@
           }
         }
       }
+    },
+    "/api/v1/report": {
+      "get": {
+        "summary": "Read a cached subnet report",
+        "description": "Read published exact-prefix sellers, existing cost calculations, current cached network checks and a limited timeline. No upstream collection. At most 2 MiB of JSON; each section is bounded to 512 KiB. A larger section is explicitly omitted and links to the underlying paginated endpoint. History enabled/disabled is separate from no observations, errors and pagination. Source publication and history policies apply on every request. MCP tool subnet_report accepts the same filters.",
+        "parameters": [
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "description": "Maximum current offers and timeline events in each section"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Current offer snapshot, required for stable continuation"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "description": "Existing policy-bound resource timeline cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permitted sections with explicit gaps; partial section failures preserve other data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubnetReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or non-public exact resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Offer snapshot changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unable to establish public resource eligibility",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3090,11 +3195,13 @@
           },
           "requests": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "HTTP attempts started in this process, including redirects and failed transports."
           },
           "failures": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Failed HTTP attempts, excluding no-data 404 and redirect referrals. Use work.failed_checks for final check outcomes."
           },
           "rate_limited": {
             "type": "integer",
@@ -3110,7 +3217,13 @@
           },
           "duration_ms": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Cumulative attempt duration in milliseconds."
+          },
+          "redirects": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "HTTP redirect responses, including refused referrals; not final check failures."
           }
         },
         "required": [
@@ -3120,7 +3233,8 @@
           "rate_limited",
           "auth_failures",
           "no_data",
-          "duration_ms"
+          "duration_ms",
+          "redirects"
         ],
         "additionalProperties": false
       },
@@ -3208,6 +3322,12 @@
             "enum": [
               "per_check_ttl"
             ]
+          },
+          "work": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckWorkStats"
+            }
           }
         },
         "required": [
@@ -3228,7 +3348,8 @@
           "semantics",
           "due_jobs",
           "running_jobs",
-          "scheduler_policy"
+          "scheduler_policy",
+          "work"
         ],
         "additionalProperties": false,
         "description": "Process-local collection health for per-check TTL scheduling. Source Retry-After and DROP reservations survive cache eviction in separate storage. Counters reset on restart; no prefixes, credentials or arbitrary upstream URLs are returned."
@@ -3754,7 +3875,7 @@
           "origins"
         ],
         "additionalProperties": false,
-        "description": "Current validation, never historical validation. Complete describes supplied origin pairs within RIS visibility; it is not global coverage. Any missing, malformed, failed or omitted origin yields partial. proposed_asn is a separate customer-supplied prefix/ASN pair, not an observed origin. Freshness is carried by the parent observation; stale findings never pass."
+        "description": "Current validation from RIPEstat or an explicitly configured private Routinator; source identifies the actual provider. Routinator freshness requires recent validator status and validation data, with bounded last-known-health detection. source_updated_at is the validator run time, not every ROA publication time. Current validation is never historical validation. Complete describes supplied origin pairs within RIS visibility; it is not global coverage. Any missing, malformed, failed or omitted origin yields partial. proposed_asn is a separate customer-supplied prefix/ASN pair, not an observed origin. Freshness is carried by the parent observation; stale findings never pass."
       },
       "IRRObject": {
         "type": "object",
@@ -5063,6 +5184,324 @@
             "minimum": 0
           }
         }
+      },
+      "CheckWorkStats": {
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string",
+            "enum": [
+              "abuse",
+              "allocation_history",
+              "announced_prefixes",
+              "asn_neighbours",
+              "asn_overview",
+              "asn_rank",
+              "asn_relationships",
+              "dns_blocklists",
+              "geolocation",
+              "ipinfo_lite",
+              "irr",
+              "looking_glass",
+              "other",
+              "ping",
+              "prefix_overview",
+              "rdap",
+              "registration",
+              "registration_history",
+              "routing_history",
+              "routing_status",
+              "rpki",
+              "spamhaus_drop",
+              "spamhaus_zen",
+              "throughput",
+              "traceroute",
+              "transfer_history"
+            ]
+          },
+          "http_attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "redirects": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "http_failures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "external_requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "private_requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "successful_checks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed_checks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "no_data_checks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deferred_checks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "budget_denials": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "budget_waits": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "budget_wait_seconds": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "check",
+          "http_attempts",
+          "redirects",
+          "http_failures",
+          "external_requests",
+          "private_requests",
+          "successful_checks",
+          "failed_checks",
+          "no_data_checks",
+          "deferred_checks",
+          "budget_denials",
+          "budget_waits",
+          "budget_wait_seconds"
+        ],
+        "additionalProperties": false,
+        "description": "Process-local counters by fixed check type. External requests are budget admissions; HTTP/private requests count started attempts. Waits count individual waits, seconds are cumulative. Check outcomes exclude cache hits and deduplicated consumers."
+      },
+      "ReportNetwork": {
+        "type": "object",
+        "required": [
+          "current",
+          "drop"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/NetworkReport"
+          },
+          "drop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ReportMarketSection": {
+        "type": "object",
+        "required": [
+          "status",
+          "data",
+          "gaps",
+          "truncated",
+          "url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "partial",
+              "disabled",
+              "empty",
+              "error"
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarketCurrent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          }
+        },
+        "description": "A bounded section. Status describes availability, not safety. Gaps explain source scope, missing observations, disabled history, errors and byte truncation. URL reads the underlying section; next continues it. Sections above 512 KiB are omitted with explicit truncation and the underlying section URL."
+      },
+      "ReportNetworkSection": {
+        "type": "object",
+        "required": [
+          "status",
+          "data",
+          "gaps",
+          "truncated",
+          "url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "partial",
+              "disabled",
+              "empty",
+              "error"
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportNetwork"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          }
+        },
+        "description": "A bounded section. Status describes availability, not safety. Gaps explain source scope, missing observations, disabled history, errors and byte truncation. URL reads the underlying section; next continues it. Sections above 512 KiB are omitted with explicit truncation and the underlying section URL."
+      },
+      "ReportTimelineSection": {
+        "type": "object",
+        "required": [
+          "status",
+          "data",
+          "gaps",
+          "truncated",
+          "url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "partial",
+              "disabled",
+              "empty",
+              "error"
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimelineResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          }
+        },
+        "description": "A bounded section. Status describes availability, not safety. Gaps explain source scope, missing observations, disabled history, errors and byte truncation. URL reads the underlying section; next continues it. Sections above 512 KiB are omitted with explicit truncation and the underlying section URL."
+      },
+      "SubnetReport": {
+        "type": "object",
+        "required": [
+          "resource",
+          "generated_at",
+          "market",
+          "network",
+          "timeline",
+          "network_history",
+          "max_bytes",
+          "semantics"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "resource": {
+            "type": "string"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "market": {
+            "$ref": "#/components/schemas/ReportMarketSection"
+          },
+          "network": {
+            "$ref": "#/components/schemas/ReportNetworkSection"
+          },
+          "timeline": {
+            "$ref": "#/components/schemas/ReportTimelineSection"
+          },
+          "network_history": {
+            "type": "string",
+            "enum": [
+              "enabled",
+              "disabled"
+            ]
+          },
+          "max_bytes": {
+            "type": "integer",
+            "const": 2097152
+          },
+          "semantics": {
+            "type": "string"
+          }
+        },
+        "description": "Known exact public CIDR only, from permitted current listings or durable provider associations. Local/cache reads never trigger collection. generated_at is report assembly time, not a common source freshness date. Provider offers retain their own URLs, dates, terms and existing QuoteCosts; network observations and timeline retain source scope/dates/freshness/completeness. No safety score, ownership guarantee or completed-sale inference."
       }
     }
   }

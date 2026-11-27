@@ -98,7 +98,7 @@ func TestNetworkCollectionStatusColdStart(t *testing.T) {
 		t.Fatalf("collection status unavailable: %d %s", w.Code, w.Body.String())
 	}
 	var result map[string]json.RawMessage
-	if json.Unmarshal(w.Body.Bytes(), &result) != nil || result["checks"] == nil || result["upstreams"] == nil {
+	if json.Unmarshal(w.Body.Bytes(), &result) != nil || result["checks"] == nil || result["upstreams"] == nil || result["work"] == nil {
 		t.Fatalf("missing bounded coverage and upstream counters: %s", w.Body.String())
 	}
 	if strings.Contains(w.Body.String(), "10.0.") {
@@ -133,7 +133,7 @@ func TestNetworkCollectionStatusMCP(t *testing.T) {
 	}
 	b, _ := json.Marshal(result.StructuredContent)
 	var status intelligence.CollectionStatus
-	if json.Unmarshal(b, &status) != nil || len(status.Checks) != 9 || status.Semantics != "process_local_collection_health_not_subnet_safety" {
+	if json.Unmarshal(b, &status) != nil || status.Work == nil || len(status.Checks) != 9 || status.Semantics != "process_local_collection_health_not_subnet_safety" {
 		t.Fatalf("wrong MCP collection status: %s", b)
 	}
 }

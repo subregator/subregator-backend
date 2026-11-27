@@ -26,7 +26,7 @@ pathlib.Path(sys.argv[1]).write_text(json.dumps({
     "offers": [{
         "external_id": "container-smoke", "provider_id": "onie",
         "model": "lease", "availability": "available",
-        "resource": {"family": 4, "prefix": "192.0.2.0/24", "prefix_length": 24, "rir": "ARIN"},
+        "resource": {"family": 4, "prefix": "1.1.1.0/24", "prefix_length": 24, "rir": "ARIN"},
         "geography": {"country": "US", "basis": "provider_geolocation"},
         "quotes": [{"id": "monthly", "price": {"currency": "USD", "amount_minor": 1000, "minor_unit": 2}, "billing_months": 1, "fees": [], "taxes": "unknown"}],
         "url": "https://onie.net/ip-subnets",
@@ -77,7 +77,7 @@ else:
 with urllib.request.urlopen(base + "/api/v1/offers", timeout=2) as response:
     data = json.load(response)
 assert data["total"] == 1
-assert data["items"][0]["resource"]["prefix"] == "192.0.2.0/24"
+assert data["items"][0]["resource"]["prefix"] == "1.1.1.0/24"
 assert data["items"][0]["freshness"] == "fresh"
 with urllib.request.urlopen(base + "/api/v1/history", timeout=2) as response:
     history = json.load(response)
@@ -88,7 +88,7 @@ assert listing["active"] and listing["appearances"] == 1
 with urllib.request.urlopen(base + "/api/v1/resources", timeout=2) as response:
     resources = json.load(response)
 assert resources["items"][0]["provider_ids"] == ["onie"]
-with urllib.request.urlopen(base + "/api/v1/market?resource=192.0.2.0/24", timeout=2) as response:
+with urllib.request.urlopen(base + "/api/v1/market?resource=1.1.1.0/24", timeout=2) as response:
     market = json.load(response)
 assert market["current"]["total"] == 1
 assert market["current"]["items"][0]["relation"] == "exact"
@@ -96,7 +96,7 @@ assert len(market["history"]["items"]) == 1
 assert market["polls"]["items"][0]["complete"]
 with urllib.request.urlopen(base + "/api/v1/network/history?resource=1.1.1.0/24", timeout=2) as response:
     assert json.load(response)["items"] == []
-with urllib.request.urlopen(base + "/api/v1/timeline?resource=1.1.1.0/24", timeout=2) as response:
+with urllib.request.urlopen(base + "/api/v1/timeline?resource=8.8.4.0/24", timeout=2) as response:
     assert json.load(response)["items"] == []
 
 def rpc(payload, version=None):
@@ -112,13 +112,22 @@ def rpc(payload, version=None):
 initialized = rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "container-smoke", "version": "1.0.0"}}})
 result = rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "search_offers", "arguments": {"filters": {"limit": "1"}}}}, initialized["result"]["protocolVersion"])
 assert result["result"]["structuredContent"]["total"] == 1
-market_rpc = rpc({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "subnet_market", "arguments": {"filters": {"resource": "192.0.2.0/24"}}}}, initialized["result"]["protocolVersion"])
+market_rpc = rpc({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "subnet_market", "arguments": {"filters": {"resource": "1.1.1.0/24"}}}}, initialized["result"]["protocolVersion"])
 assert market_rpc["result"]["structuredContent"]["current"]["total"] == 1
 archive = rpc({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "network_history", "arguments": {"filters": {"resource": "1.1.1.0/24"}}}}, initialized["result"]["protocolVersion"])
 assert archive["result"]["structuredContent"]["items"] == []
-timeline = rpc({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "resource_timeline", "arguments": {"filters": {"resource": "1.1.1.0/24"}}}}, initialized["result"]["protocolVersion"])
+timeline = rpc({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "resource_timeline", "arguments": {"filters": {"resource": "8.8.4.0/24"}}}}, initialized["result"]["protocolVersion"])
 assert timeline["result"]["structuredContent"]["items"] == []
-print("Non-root read-only container: feed, durable history, REST/MCP, timeline and default-off check archive passed")
+with urllib.request.urlopen(base + "/api/v1/report?resource=1.1.1.0/24", timeout=2) as response:
+    report = json.load(response)
+assert report["market"]["data"]["total"] == 1
+assert report["network_history"] == "disabled" and report["timeline"]["data"]["items"]
+report_rpc = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "subnet_report", "arguments": {"filters": {"resource": "1.1.1.0/24"}}}}, initialized["result"]["protocolVersion"])
+assert report_rpc["result"]["structuredContent"]["market"]["data"] == report["market"]["data"]
+with urllib.request.urlopen(base + "/api/v1/network/status", timeout=2) as response:
+    status = json.load(response)
+assert isinstance(status["work"], list) and status["request_budget_rpm"] == 120
+print("Non-root read-only container: feed, report REST/MCP, collection counters, timeline and default-off archive passed")
 
 import concurrent.futures, urllib.error
 payload = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "network_checks", "arguments": {}}}).encode()

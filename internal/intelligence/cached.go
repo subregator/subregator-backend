@@ -15,16 +15,22 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 	report := Report{Resource: target, Metrics: []Metric{}, Semantics: "source_observations_not_ownership_or_reachability_guarantees"}
 	for _, name := range q.Checks {
 		m := s.initialMetric(target, name, q)
-		key := metricKey(target, q, name)
+		key := s.cacheKey(target, q, name)
 		if s.cache != nil && m.Status == "pending" {
 			b, expires, found, err := s.cache.CacheGet(ctx, key)
 			if err != nil {
 				s.persistenceFailed()
+				m.Status = "error"
+				m.Error = "Cached observation storage unavailable"
 			}
 			var cached Metric
 			if err == nil && found && json.Unmarshal(b, &cached) == nil {
 				m = cached
 				m.Cached = true
+				if name == "rpki" && s.routinatorURL != "" && !s.routinatorUsable() && m.ObservedAt != nil {
+					m.Status = "stale"
+					m.Error = "Routinator health confirmation unavailable or expired"
+				}
 				if !time.Now().Before(expires) && m.ObservedAt != nil && (m.Status == "ok" || m.Status == "stale") {
 					m.Status = "stale"
 				}

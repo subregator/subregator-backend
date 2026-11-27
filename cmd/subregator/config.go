@@ -14,6 +14,7 @@ import (
 )
 
 type config struct {
+	RoutinatorURL    string
 	HistoricalChecks string
 	HistoryChecks    string
 	Spamhaus         bool
@@ -50,6 +51,12 @@ func loadConfig(args []string, getenv func(string) string, output io.Writer) (co
 	fs.StringVar(&c.HistoricalChecks, "historical-checks", env("HISTORICAL_CHECKS", ""), "Approved background historical snapshots; empty disables (SUBREGATOR_HISTORICAL_CHECKS)")
 	fs.StringVar(&c.HistoryChecks, "history-checks", env("HISTORY_CHECKS", ""), "Approved durable history checks; empty disables archive and publication (SUBREGATOR_HISTORY_CHECKS)")
 	fs.StringVar(&c.Addr, "addr", env("ADDR", "127.0.0.1:8080"), "HTTP listen address (SUBREGATOR_ADDR)")
+	c.RoutinatorURL = getenv("SUBREGATOR_ROUTINATOR_URL")
+	if c.RoutinatorURL != "" {
+		if err := intelligence.New(nil, false, "", 120).EnableRoutinator(c.RoutinatorURL); err != nil {
+			return c, err
+		}
+	}
 	c.DatabaseURL = env("DATABASE_URL", "postgresql://subregator@127.0.0.1:5432/subregator?sslmode=disable")
 	spamhaus := fs.String("spamhaus", env("SPAMHAUS", "false"), "Enable licensed Spamhaus HTTPS queries after quota and data-use approval (SUBREGATOR_SPAMHAUS)")
 	abuse := fs.String("abuseipdb", env("ABUSEIPDB", "false"), "Enable AbuseIPDB only after account, quota and data-use approval (SUBREGATOR_ABUSEIPDB)")

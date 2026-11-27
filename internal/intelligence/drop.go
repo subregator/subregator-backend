@@ -80,6 +80,7 @@ func parseDrop(b []byte, ipv4 bool, now time.Time) (dropFeed, error) {
 	return feed, nil
 }
 func (f *dropFeed) check(ctx context.Context, s *Service, prefix netip.Prefix, now time.Time) Check {
+	ctx = context.WithValue(ctx, checkWorkKey{}, "spamhaus_drop")
 	family := "v6"
 	if prefix.Addr().Is4() {
 		family = "v4"
@@ -140,14 +141,17 @@ func (f *dropFeed) check(ctx context.Context, s *Service, prefix netip.Prefix, n
 				f.Next = now.Add(time.Minute)
 			} else {
 				b, e := s.readSource(ctx, source, "", 4<<20, false)
+				checkStatus := "unavailable"
 				if e == nil {
 					if fresh, e := parseDrop(b, prefix.Addr().Is4(), now); e == nil {
 						fresh.Fetched = now
 						fresh.Next = f.Next
 						fresh.loaded = true
 						*f = fresh
+						checkStatus = "ok"
 					}
 				}
+				s.recordCheck(ctx, Metric{Status: checkStatus})
 				if persist() != nil {
 					f.pendingSave = true
 					f.retrySave = now.Add(time.Minute)

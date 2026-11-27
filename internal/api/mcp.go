@@ -46,6 +46,10 @@ func (s *service) mcpHandler() http.Handler {
 		r, e := s.listing(ctx, in.ID)
 		return nil, r, e
 	})
+	mcp.AddTool(server, tool("subnet_report", "Read a bounded JSON report for a known public CIDR: published offers and existing cost calculations, cached current network observations and a permitted timeline; section gaps and continuations are explicit; never collect upstream data"), func(ctx context.Context, _ *mcp.CallToolRequest, in filterInput) (*mcp.CallToolResult, any, error) {
+		r, e := s.subnetReport(ctx, values(in))
+		return nil, r, e
+	})
 	mcp.AddTool(server, tool("subnet_market", "Compare current observed offers by exact public subnet or explicit parent/child relation; read exact-prefix provider associations, listing/price changes and collection gaps without external requests; no ownership or sale inference"), func(ctx context.Context, _ *mcp.CallToolRequest, in filterInput) (*mcp.CallToolResult, any, error) {
 		r, e := s.market(ctx, values(in))
 		return nil, r, e

@@ -83,6 +83,13 @@ func (a *Automatic) Get(resource string) OfferChecks {
 		r.Abuse = &check
 	}
 	now := time.Now()
+	if r.RPKI.Source != "" && r.RPKI.Source != a.service.rpkiSource() {
+		r.RPKI = unknownCheck()
+	}
+	if a.service.routinatorURL != "" && !a.service.routinatorUsable() && r.RPKI.ObservedAt != nil {
+		r.RPKI.Freshness = "stale"
+		r.RPKI.Reason = "Routinator health confirmation unavailable or expired"
+	}
 	if r.ZEN != nil {
 		c := *r.ZEN
 		r.ZEN = &c
@@ -223,7 +230,7 @@ func (a *Automatic) publish(ctx context.Context, key string, r Report, blocklist
 }
 
 func metricCheck(m Metric, now time.Time) Check {
-	c := Check{Status: "unavailable", Freshness: "unknown", ObservedAt: m.ObservedAt, ExpiresAt: m.ExpiresAt, Source: m.Source, SourceURL: m.SourceURL, Coverage: m.Coverage, Reason: m.Error}
+	c := Check{Status: "unavailable", Freshness: "unknown", ObservedAt: m.ObservedAt, ExpiresAt: m.ExpiresAt, Source: m.Source, SourceURL: m.SourceURL, Coverage: m.Coverage, Reason: m.Error, SourceUpdatedAt: m.SourceUpdatedAt}
 	if m.Status == "pending" {
 		c.Status = "pending"
 	}

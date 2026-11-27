@@ -52,11 +52,23 @@ func (s *Service) throughput(ctx context.Context, target Target, q Query) (Metri
 	req.Header.Set("User-Agent", "Subregator/0.2 (+https://github.com/subregator/subregator-backend)")
 	req.Header.Set("Accept-Encoding", "identity")
 	started := time.Now()
+	status := 0
+	var requestError error
+	defer func() {
+		s.recordHTTPRequest(ctx, q.TestURL, status, requestError, time.Since(started))
+	}()
 	response, e := s.client.Do(req)
+	if response != nil {
+		status = response.StatusCode
+	}
 	if e != nil {
+		requestError = e
 		return Metric{}, errors.New("test download unavailable")
 	}
 	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		requestError = errors.New("test endpoint HTTP status")
+	}
 	if response.StatusCode == 429 {
 		return Metric{}, &sourceLimited{Until: s.deferSource(ctx, q.TestURL, response.Header.Get("Retry-After"))}
 	}
@@ -67,7 +79,7 @@ func (s *Service) throughput(ctx context.Context, target Target, q Query) (Metri
 	const limit = 8 << 20
 	count, readError := io.Copy(io.Discard, io.LimitReader(response.Body, limit))
 	elapsed := time.Since(bodyStart).Seconds()
-	s.recordRequest(q.TestURL, response.StatusCode, readError, time.Since(started))
+	requestError = readError
 	if count == 0 || elapsed <= 0 {
 		return Metric{}, ErrNoData
 	}

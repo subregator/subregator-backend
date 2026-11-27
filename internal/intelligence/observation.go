@@ -229,6 +229,9 @@ func checkObservation(c Check, resource, name string, now time.Time) Observation
 func (s *Service) initialMetric(target Target, name string, q Query) Metric {
 	d := definitions[name]
 	m := Metric{Name: name, Status: "pending", Source: d.Source, Coverage: d.Coverage, Data: json.RawMessage("null")}
+	if name == "rpki" {
+		m.Source = s.rpkiSource()
+	}
 	if (name == "geolocation" || name == "dns_blocklists" || name == "ping" || name == "traceroute" || name == "throughput") && (q.StartTime != "" || q.EndTime != "" || q.Version != "" || q.ASN != 0) {
 		m.Status = "not_applicable"
 		m.Error = "This check supports current observations only; historical and proposed-ASN parameters are unsupported"
