@@ -122,3 +122,15 @@ func TestRejectedRDAPReferralIsFinalCheckFailure(t *testing.T) {
 		t.Fatal(stats)
 	}
 }
+
+func TestThroughputEmptyHTTP200IsNotHTTPFailure(t *testing.T) {
+	s := mockService(t, func(r *http.Request) (*http.Response, error) { return response(200, ""), nil })
+	result, err := s.Inspect(context.Background(), Query{Resource: "1.1.1.1", TestURL: "https://1.1.1.1/", Checks: []string{"throughput"}})
+	if err != nil || result.Metrics[0].Status != "no_data" {
+		t.Fatal(err, result)
+	}
+	stats := s.workStats["throughput"]
+	if stats.HTTPAttempts != 1 || stats.HTTPFailures != 0 || stats.NoDataChecks != 1 || s.stats["other"].Failures != 0 {
+		t.Fatalf("empty HTTP200 was a transport failure: %+v %+v", stats, s.stats["other"])
+	}
+}

@@ -34,7 +34,7 @@ func validTestURL(raw string, target Target) bool {
 	return false
 }
 
-func (s *Service) throughput(ctx context.Context, target Target, q Query) (out Metric, err error) {
+func (s *Service) throughput(ctx context.Context, target Target, q Query) (Metric, error) {
 	if !validTestURL(q.TestURL, target) {
 		return Metric{}, errors.New("matching public test URL required")
 	}
@@ -53,12 +53,8 @@ func (s *Service) throughput(ctx context.Context, target Target, q Query) (out M
 	req.Header.Set("Accept-Encoding", "identity")
 	started := time.Now()
 	status := 0
-	var bodyError error
+	var requestError error
 	defer func() {
-		requestError := err
-		if requestError == nil {
-			requestError = bodyError
-		}
 		s.recordHTTPRequest(ctx, q.TestURL, status, requestError, time.Since(started))
 	}()
 	response, e := s.client.Do(req)
@@ -66,9 +62,13 @@ func (s *Service) throughput(ctx context.Context, target Target, q Query) (out M
 		status = response.StatusCode
 	}
 	if e != nil {
+		requestError = e
 		return Metric{}, errors.New("test download unavailable")
 	}
 	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		requestError = errors.New("test endpoint HTTP status")
+	}
 	if response.StatusCode == 429 {
 		return Metric{}, &sourceLimited{Until: s.deferSource(ctx, q.TestURL, response.Header.Get("Retry-After"))}
 	}
@@ -79,7 +79,7 @@ func (s *Service) throughput(ctx context.Context, target Target, q Query) (out M
 	const limit = 8 << 20
 	count, readError := io.Copy(io.Discard, io.LimitReader(response.Body, limit))
 	elapsed := time.Since(bodyStart).Seconds()
-	bodyError = readError
+	requestError = readError
 	if count == 0 || elapsed <= 0 {
 		return Metric{}, ErrNoData
 	}
