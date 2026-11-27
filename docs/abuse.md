@@ -38,7 +38,7 @@ There is exactly one source request per abuse collection. There are no automatic
 
 The adapter reuses bounded queues, four shared HTTP slots, eight-second HTTP timeouts, the 1 MiB response limit, duplicate suppression, shared RPM budgets, source Retry-After persistence and cancellation. Successful summaries, including partial source coverage, use a one-day cache TTL to avoid repeated expensive block queries. Errors use existing backoff; account plan denials use a one-day pause. Hidden prefixes are excluded from the worker and are not inferred.
 
-The existing PostgreSQL JSON cache and compact reports store only normalized summaries. Restart preserves retained source report and ingestion times; no schema migration or dependency is needed. Old reports without the optional field remain readable. The 2,000-entry cache may evict observations and is not a durable report archive. BE-10 owns historical storage and change semantics; aging out or cache eviction must not produce a resolution event.
+The existing PostgreSQL JSON cache and compact reports store only normalized summaries. Restart preserves retained source report and ingestion times; no schema migration or dependency is needed. Old reports without the optional field remain readable. The 50,000-entry cache may evict observations and is not a durable report archive. BE-10 owns historical storage and change semantics; aging out or cache eviction must not produce a resolution event.
 
 ## Validation and remaining work
 

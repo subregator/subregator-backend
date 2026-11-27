@@ -2,7 +2,7 @@
 
 [API reference](api.md) · [Capacity report](collection-capacity.md) · [BE-04](https://github.com/subregator/subregator-backend/issues/6)
 
-The single ingestion process runs six bounded queues: prefix overview, RPKI, routing status, registration, RDAP and shared DROP evaluation. Each queue runs at most one job at a time and rotates fairly through eligible public prefixes. The existing four-slot HTTP limit and configured shared requests/minute budget still apply across all queues. This does not increase any vendor entitlement or enable distributed ingestion.
+The single ingestion process runs six bounded queues: prefix overview, RPKI, routing status, registration, RDAP and shared DROP evaluation. Each queue runs at most one job at a time and rotates fairly through eligible public prefixes. The four-slot HTTP limit still applies across all queues. External sources share the configured requests/minute budget; the private IRRd mirror shares HTTP concurrency and source cooldown handling without spending external-source allowance. This does not increase any vendor entitlement or enable distributed ingestion.
 
 ## Scheduling rules
 
@@ -21,7 +21,7 @@ HTTP 429 establishes a source retry window from `Retry-After` in seconds or HTTP
 
 Optional metric `retry_at` is the earliest source-allowed retry, not a promised execution time. Dependencies, FIFO queueing and the shared budget can delay work further. Retained stale observations keep their earlier evidence while carrying a later retry deadline.
 
-PostgreSQL `source_limits` stores these small deadlines outside the 2000-entry observation cache. A shorter deadline cannot replace a later recorded one. Unavailable or invalid stored schedules defer requests rather than bypassing them. A failed deadline write is retried before the same process resumes that source. A crash before an unsuccessful write is recovered can lose the newly received deadline: unsaved state cannot survive restart. Production uses the required PostgreSQL cache; a `Service` constructed without a cache has process-local limits only.
+PostgreSQL `source_limits` stores these small deadlines outside the 50,000-entry observation cache. A shorter deadline cannot replace a later recorded one. Unavailable or invalid stored schedules defer requests rather than bypassing them. A failed deadline write is retried before the same process resumes that source. A crash before an unsuccessful write is recovered can lose the newly received deadline: unsaved state cannot survive restart. Production uses the required PostgreSQL cache; a `Service` constructed without a cache has process-local limits only.
 
 The table is created additively at database initialization; existing offers, history and DROP data are not removed. Older binaries do not enforce `source_limits`, so rollback must preserve outstanding windows by keeping collection disabled or waiting until they expire. The single-writer lease remains required; sharing PostgreSQL does not coordinate independent polling replicas.
 

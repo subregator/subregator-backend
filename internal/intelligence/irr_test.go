@@ -292,7 +292,7 @@ func TestIRRAutomaticPublishOriginChangeAndRestart(t *testing.T) {
 	}
 }
 
-func TestIRRMetadataFailureRetriesAndSharedBudget(t *testing.T) {
+func TestIRRMetadataFailureRemainsPartial(t *testing.T) {
 	var calls atomic.Int32
 	s := mockService(t, func(r *http.Request) (*http.Response, error) {
 		calls.Add(1)
@@ -303,7 +303,7 @@ func TestIRRMetadataFailureRetriesAndSharedBudget(t *testing.T) {
 	target, _ := ParseTarget("1.1.1.0/24")
 	overview := reportFixture(t).Metrics[0]
 	m := s.metric(context.Background(), target, Query{overview: &overview}, "irr")
-	if calls.Load() != 1 || m.IRR == nil || m.IRR.Status != "partial" || time.Until(*m.ExpiresAt) > time.Minute+time.Second {
+	if calls.Load() != 2 || m.IRR == nil || m.IRR.Status != "partial" || time.Until(*m.ExpiresAt) > time.Minute+time.Second {
 		t.Fatal("metadata budget gap passed or retained for full TTL", m)
 	}
 }
