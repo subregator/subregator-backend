@@ -104,6 +104,7 @@ type Service struct {
 	spamhausKey         string
 	abuseEnabled        bool
 	abuseKey            string
+	irrdMetadata        *irrMetadata
 	irrdURL             string
 	irrEnabled          bool
 	cache               Cache
