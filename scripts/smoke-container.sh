@@ -96,7 +96,7 @@ assert len(market["history"]["items"]) == 1
 assert market["polls"]["items"][0]["complete"]
 with urllib.request.urlopen(base + "/api/v1/network/history?resource=1.1.1.0/24", timeout=2) as response:
     assert json.load(response)["items"] == []
-with urllib.request.urlopen(base + "/api/v1/timeline?resource=1.1.1.0/24", timeout=2) as response:
+with urllib.request.urlopen(base + "/api/v1/timeline?resource=8.8.4.0/24", timeout=2) as response:
     assert json.load(response)["items"] == []
 
 def rpc(payload, version=None):
@@ -116,7 +116,7 @@ market_rpc = rpc({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
 assert market_rpc["result"]["structuredContent"]["current"]["total"] == 1
 archive = rpc({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "network_history", "arguments": {"filters": {"resource": "1.1.1.0/24"}}}}, initialized["result"]["protocolVersion"])
 assert archive["result"]["structuredContent"]["items"] == []
-timeline = rpc({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "resource_timeline", "arguments": {"filters": {"resource": "1.1.1.0/24"}}}}, initialized["result"]["protocolVersion"])
+timeline = rpc({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "resource_timeline", "arguments": {"filters": {"resource": "8.8.4.0/24"}}}}, initialized["result"]["protocolVersion"])
 assert timeline["result"]["structuredContent"]["items"] == []
 with urllib.request.urlopen(base + "/api/v1/report?resource=1.1.1.0/24", timeout=2) as response:
     report = json.load(response)
