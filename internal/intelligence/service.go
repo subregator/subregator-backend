@@ -99,6 +99,7 @@ type call struct {
 	result Metric
 }
 type Service struct {
+	historyChecks       []string
 	spamhausEnabled     bool
 	spamhausKey         string
 	abuseEnabled        bool
@@ -263,6 +264,7 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 				ttl = 24 * time.Hour
 			}
 			if result.Status != "plan_limited" && result.Status != "no_data" && (previous.Status == "ok" || previous.Status == "stale") {
+				s.archiveMetric(ctx, target, q, result)
 				retry := result.RetryAt
 				result = previous
 				result.RetryAt = retry
@@ -279,6 +281,7 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 			expires = *result.ExpiresAt
 		}
 		result.ExpiresAt = &expires
+		s.archiveMetric(ctx, target, q, result)
 		if s.cache != nil && ctx.Err() == nil {
 			if b, e := json.Marshal(result); e == nil {
 				if s.cache.CachePut(ctx, key, b, expires) != nil {

@@ -81,6 +81,9 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	checks := intelligence.New(database, cfg.Network, cfg.IPinfoLiteToken, cfg.ChecksRPM)
+	if e = checks.SetHistoryChecks(cfg.HistoryChecks); e != nil {
+		return e
+	}
 	if cfg.Spamhaus {
 		checks.EnableSpamhaus(cfg.SpamhausKey)
 	}

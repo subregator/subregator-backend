@@ -134,3 +134,5 @@ The public API is read-only and does not provide administrative feed imports or 
 This release remains a single-writer catalogue and history service. There is no account system, checkout, purchase automation, currency conversion or distributed scheduler. Current listing queries stay in memory; PostgreSQL stores durable observations and a bounded external-result cache. Multiple ingestion writers or independent API replicas require coordinated scheduling and cache refresh before enabling them; sharing PostgreSQL alone does not synchronize each process's in-memory catalogue.
 
 See [subnet market and price history](subnet-market.md) for exact-prefix seller comparison, quoted costs, provider gaps, REST/MCP pagination and explicit parent/child relationships.
+
+See [durable observation history](observation-history.md) for the separate default-off retention/publication allowlist, source restrictions, conservative change bounds and PostgreSQL migration.

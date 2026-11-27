@@ -73,3 +73,5 @@ A successful IPv6 BGP source result can describe a covering prefix:
 ```
 
 Completeness in the second example describes an unfiltered source result, not global BGP visibility or packet reachability. A source failure, missing credential, unknown coverage or old observation must never become a safety verdict.
+
+See [durable observation history](observation-history.md) for the separate default-off retention/publication allowlist, source restrictions, conservative change bounds and PostgreSQL migration.

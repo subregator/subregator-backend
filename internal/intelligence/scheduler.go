@@ -86,6 +86,7 @@ func (a *Automatic) Run(ctx context.Context, store *catalog.Store) {
 						p := netip.MustParsePrefix(work.Key)
 						feed := a.drop[p.Addr().Is4()]
 						result.Blocklist = feed.check(workCtx, a.service, p, time.Now())
+						a.service.archiveDROP(workCtx, work.Key, result.Blocklist)
 						if a.service.network {
 							result.Next = feed.Next
 							if feed.pendingSave {
