@@ -60,7 +60,10 @@ var definitions = map[string]Definition{
 func Capabilities() []Definition {
 	out := make([]Definition, 0, len(definitions))
 	for _, d := range definitions {
-		d.Automatic = slices.Contains(automaticChecks, d.Name)
+		d.Automatic = slices.Contains(automaticChecks, d.Name) || slices.Contains(historicalChecks, d.Name)
+		if slices.Contains(historicalChecks, d.Name) {
+			d.Description += "; background imports require explicit approval and default off"
+		}
 		out = append(out, d)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -99,6 +102,7 @@ type call struct {
 	result Metric
 }
 type Service struct {
+	historicalChecks    []string
 	historyChecks       []string
 	spamhausEnabled     bool
 	spamhausKey         string
@@ -559,15 +563,17 @@ func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Met
 	default:
 		endpoint := map[string]string{"prefix_overview": "prefix-overview", "routing_status": "routing-status", "looking_glass": "looking-glass", "routing_history": "routing-history", "registration": "whois", "registration_history": "historical-whois", "allocation_history": "allocation-history", "transfer_history": "transfer-history", "asn_overview": "as-overview", "asn_neighbours": "asn-neighbours"}[m.Name]
 		params := url.Values{"resource": {target.Value}}
-		if m.Name == "routing_history" {
+		if m.Name == "routing_history" || m.Name == "allocation_history" {
 			if q.StartTime != "" {
 				params.Set("starttime", q.StartTime)
 				params.Set("endtime", q.EndTime)
 			} else {
 				params.Set("starttime", time.Now().UTC().Add(-7*24*time.Hour).Format(time.RFC3339))
 			}
-			params.Set("max_rows", "300")
-			params.Set("normalise_visibility", "true")
+			if m.Name == "routing_history" {
+				params.Set("max_rows", "300")
+				params.Set("normalise_visibility", "true")
+			}
 		}
 		if m.Name == "registration_history" && q.Version != "" {
 			params.Set("version", q.Version)

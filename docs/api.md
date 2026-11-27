@@ -136,3 +136,5 @@ This release remains a single-writer catalogue and history service. There is no 
 See [subnet market and price history](subnet-market.md) for exact-prefix seller comparison, quoted costs, provider gaps, REST/MCP pagination and explicit parent/child relationships.
 
 See [durable observation history](observation-history.md) for the separate default-off retention/publication allowlist, source restrictions, conservative change bounds and PostgreSQL migration.
+
+See the [resource timeline](timeline.md) for cached REST/MCP pagination combining listing and permitted network histories.

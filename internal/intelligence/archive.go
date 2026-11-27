@@ -11,6 +11,7 @@ import (
 )
 
 type ArchivedObservation struct {
+	Origin          string          `json:"origin,omitempty"`
 	ID              int64           `json:"id"`
 	Identity        string          `json:"identity"`
 	Resource        string          `json:"resource"`
@@ -38,6 +39,10 @@ type ObservationArchive interface {
 }
 
 func (s *Service) archiveMetric(ctx context.Context, target Target, q Query, m Metric) {
+	if target.Kind == "prefix" && slices.Contains(historicalChecks, m.Name) {
+		s.archiveHistorical(ctx, target, q, m)
+		return
+	}
 	if target.Kind != "prefix" || !slices.Contains(s.historyChecks, m.Name) || m.Cached || q.ASN != 0 || q.StartTime != "" || q.EndTime != "" || q.Version != "" {
 		return
 	}
@@ -114,7 +119,9 @@ func (s *Service) SetHistoryChecks(raw string) error {
 	s.historyChecks = checks
 	return nil
 }
-func (s *Service) HistoryChecks() []string { return slices.Clone(s.historyChecks) }
+func (s *Service) HistoryChecks() []string {
+	return append(slices.Clone(s.historyChecks), s.historicalChecks...)
+}
 
 func orderedRegistryValues[T any](values []T) []T {
 	values = slices.Clone(values)

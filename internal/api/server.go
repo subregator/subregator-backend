@@ -53,6 +53,10 @@ func Handler(store *catalog.Store, origin string, extras ...Services) http.Handl
 		result, e := service.resources(r.Context(), r.URL.Query())
 		respond(w, r, result, e)
 	})
+	mux.HandleFunc("GET /api/v1/timeline", func(w http.ResponseWriter, r *http.Request) {
+		result, e := service.timeline(r.Context(), r.URL.Query())
+		respond(w, r, result, e)
+	})
 	mux.HandleFunc("GET /api/v1/network/history", func(w http.ResponseWriter, r *http.Request) {
 		result, e := service.observations(r.Context(), r.URL.Query())
 		respond(w, r, result, e)

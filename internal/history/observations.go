@@ -32,9 +32,13 @@ func (d *DB) SaveObservation(ctx context.Context, r intelligence.ArchivedObserva
 		return errors.New("invalid archived observation")
 	}
 	switch r.Check {
-	case "prefix_overview", "rpki", "registration", "rdap", "spamhaus_drop":
+	case "prefix_overview", "rpki", "registration", "rdap", "spamhaus_drop", "routing_history", "allocation_history", "transfer_history", "registration_history":
 	default:
 		return errors.New("source history not approved")
+	}
+	historical := r.Check == "routing_history" || r.Check == "allocation_history" || r.Check == "transfer_history" || r.Check == "registration_history"
+	if historical != (r.Origin == "imported_history") {
+		return errors.New("invalid observation provenance")
 	}
 	if target, err := intelligence.ParseTarget(r.Resource); err != nil || target.Kind != "prefix" || target.Value != r.Resource {
 		return errors.New("canonical prefix required")
@@ -57,6 +61,16 @@ func (d *DB) SaveObservation(ctx context.Context, r intelligence.ArchivedObserva
 	}{r.Resource, r.Check, r.Source, collected, r.SourceUpdatedAt, r.Observation, r.Evidence})
 	if err != nil {
 		return err
+	}
+	if r.Origin == "imported_history" && r.Observation.CollectionStatus == "succeeded" {
+		identity, err = json.Marshal(struct {
+			Resource, Check, Source string
+			Scope                   intelligence.ObservationScope
+			Evidence                json.RawMessage
+		}{r.Resource, r.Check, r.Source, r.Observation.Scope, r.Evidence})
+		if err != nil {
+			return err
+		}
 	}
 	sum := sha256.Sum256(identity)
 	r.Identity = hex.EncodeToString(sum[:])
@@ -144,7 +158,11 @@ func (d *DB) SaveObservation(ctx context.Context, r intelligence.ArchivedObserva
 	} else {
 		r.Gap = true
 	}
-	if !r.Comparable && r.Event != "out_of_order" {
+	if r.Origin == "imported_history" && r.Observation.CollectionStatus == "succeeded" {
+		r.Event = "historical_snapshot"
+		r.Comparable = false
+		r.Gap = true
+	} else if !r.Comparable && r.Event != "out_of_order" {
 		r.Event = "gap"
 		r.Gap = true
 	}

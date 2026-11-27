@@ -141,6 +141,7 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 	active := publishedPrefixes(store)
 	out := CollectionStatus{GeneratedAt: now, EligiblePrefixes: len(active), Checks: []CheckCoverage{}, Upstreams: []UpstreamStats{}, SchedulerPolicy: "per_check_ttl", Semantics: "process_local_collection_health_not_subnet_safety"}
 	names := []string{"prefix_overview", "rpki", "routing_status", "registration", "rdap", "spamhaus_drop", "irr", "abuse", "spamhaus_zen"}
+	names = append(names, a.service.historicalChecks...)
 	a.mu.RLock()
 	for key := range active {
 		due, scheduled := a.due[key]
