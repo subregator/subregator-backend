@@ -226,6 +226,9 @@ func (a *Automatic) restoreSchedule(ctx context.Context, key string, names []str
 			if report.IRR != nil && report.IRR.Source != "IRRd" {
 				report.IRR = nil
 			}
+			if report.RPKI.Source != a.service.rpkiSource() && (a.service.routinatorURL != "" || report.RPKI.Source != "") {
+				report.RPKI = unknownCheck()
+			}
 			a.reports[key] = report
 			a.mu.Unlock()
 		}

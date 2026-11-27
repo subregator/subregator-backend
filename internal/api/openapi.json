@@ -3875,7 +3875,7 @@
           "origins"
         ],
         "additionalProperties": false,
-        "description": "Current validation, never historical validation. Complete describes supplied origin pairs within RIS visibility; it is not global coverage. Any missing, malformed, failed or omitted origin yields partial. proposed_asn is a separate customer-supplied prefix/ASN pair, not an observed origin. Freshness is carried by the parent observation; stale findings never pass."
+        "description": "Current validation from RIPEstat or an explicitly configured private Routinator; source identifies the actual provider. Routinator freshness requires recent validator status and validation data, with bounded last-known-health detection. source_updated_at is the validator run time, not every ROA publication time. Current validation is never historical validation. Complete describes supplied origin pairs within RIS visibility; it is not global coverage. Any missing, malformed, failed or omitted origin yields partial. proposed_asn is a separate customer-supplied prefix/ASN pair, not an observed origin. Freshness is carried by the parent observation; stale findings never pass."
       },
       "IRRObject": {
         "type": "object",

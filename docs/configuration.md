@@ -75,3 +75,5 @@ Integration tests use isolated randomly named PostgreSQL schemas and clean up on
 See [durable observation history](observation-history.md) for the separate default-off retention/publication allowlist, source restrictions, conservative change bounds and PostgreSQL migration.
 
 `SUBREGATOR_HISTORICAL_CHECKS` / `-historical-checks` is an empty-by-default approved background-history list; see [timeline/import bounds](timeline.md).
+
+`SUBREGATOR_ROUTINATOR_URL` is empty by default (RIPEstat). A private URL selects [local RPKI validation](rpki.md), with separate cache provenance, bounded validator-health freshness and no external-RPM charge for local requests. It does not enable either history setting.

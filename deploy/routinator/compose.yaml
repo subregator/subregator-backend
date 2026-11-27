@@ -1,0 +1,34 @@
+name: subregator-rpki
+services:
+  routinator:
+    image: nlnetlabs/routinator:v0.15.3@sha256:57806515bc49a52fb84a52cfb6e7dc1e56069e49bb21fc68158585e9604c9f21
+    command: [--stale, reject, server, --http, '0.0.0.0:8323', --refresh, '600']
+    restart: unless-stopped
+    networks: [rpki]
+    volumes:
+      - cache:/home/routinator/.rpki-cache
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:8323/api/v1/status']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15m
+volumes:
+  cache:
+networks:
+  rpki:
+    name: subregator-rpki

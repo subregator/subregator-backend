@@ -102,6 +102,10 @@ type call struct {
 	result Metric
 }
 type Service struct {
+	routinatorURL       string
+	routinatorSlots     chan struct{}
+	routinatorChecked   time.Time
+	routinatorHealthy   bool
 	historicalChecks    []string
 	historyChecks       []string
 	spamhausEnabled     bool
@@ -201,7 +205,7 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 	if m.Status != "pending" {
 		return m
 	}
-	key := metricKey(target, q, name)
+	key := s.cacheKey(target, q, name)
 	var previous Metric
 	cached := func() bool {
 		if s.cache != nil {
@@ -215,6 +219,9 @@ func (s *Service) metric(ctx context.Context, target Target, q Query, name strin
 						previous = Metric{}
 						return false
 					}
+				}
+				if name == "rpki" && s.routinatorURL != "" && !s.routinatorUsable() {
+					return false
 				}
 				previous.Cached = true
 				return true
@@ -733,7 +740,15 @@ func (s *Service) rpki(ctx context.Context, target Target, q Query) (Metric, err
 			q.overview = &overview
 		}
 	}
-	prefix, asns, e := s.origins(ctx, target, q)
+	var prefix string
+	var asns []uint32
+	var e error
+	if s.routinatorURL != "" && target.Kind == "prefix" && q.ASN != 0 {
+		prefix = target.Value
+		asns = []uint32{q.ASN}
+	} else {
+		prefix, asns, e = s.origins(ctx, target, q)
+	}
 	if e != nil {
 		return Metric{}, e
 	}
@@ -743,12 +758,27 @@ func (s *Service) rpki(ctx context.Context, target Target, q Query) (Metric, err
 			return Metric{}, errors.New("exact origin observation required")
 		}
 	}
+	var validatorUpdated time.Time
+	if s.routinatorURL != "" {
+		var err error
+		validatorUpdated, err = s.routinatorStatus(ctx)
+		if err != nil {
+			return Metric{}, err
+		}
+	}
+	var validatorExpires *time.Time
 	results := []any{}
 	successes := 0
 	var lastError error
 	var retry *time.Time
 	for _, asn := range asns[:min(4, len(asns))] {
-		m, err := s.ripe(ctx, "rpki-validation", url.Values{"resource": {strings.TrimPrefix(asnTarget(asn), "AS")}, "prefix": {prefix}})
+		var m Metric
+		var err error
+		if s.routinatorURL != "" {
+			m, err = s.routinatorValidation(ctx, prefix, asn, validatorUpdated)
+		} else {
+			m, err = s.ripe(ctx, "rpki-validation", url.Values{"resource": {strings.TrimPrefix(asnTarget(asn), "AS")}, "prefix": {prefix}})
+		}
 		if err != nil {
 			lastError = err
 			var limited *sourceLimited
@@ -758,6 +788,9 @@ func (s *Service) rpki(ctx context.Context, target Target, q Query) (Metric, err
 			results = append(results, map[string]any{"asn": asn, "data": nil})
 		} else {
 			successes++
+			if m.ExpiresAt != nil && (validatorExpires == nil || m.ExpiresAt.Before(*validatorExpires)) {
+				validatorExpires = m.ExpiresAt
+			}
 			results = append(results, map[string]any{"asn": asn, "source_url": m.SourceURL, "observed_at": m.ObservedAt, "data": m.Data})
 		}
 	}
@@ -779,7 +812,13 @@ func (s *Service) rpki(ctx context.Context, target Target, q Query) (Metric, err
 	}
 
 	b, _ := json.Marshal(map[string]any{"prefix": prefix, "origins": results, "origin_limit": 4, "basis": basis, "truncated": truncated, "origin_completeness": originCompleteness, "origin_observed_at": overview.ObservedAt, "origin_expires_at": overview.ExpiresAt})
-	return Metric{Data: b, ObservedAt: observedNow(), RetryAt: retry, SourceURL: "https://stat.ripe.net/docs/data-api/api-endpoints/rpki-validation"}, nil
+	sourceURL := "https://stat.ripe.net/docs/data-api/api-endpoints/rpki-validation"
+	var updated *time.Time
+	if s.routinatorURL != "" {
+		sourceURL = routinatorSourceURL
+		updated = &validatorUpdated
+	}
+	return Metric{Data: b, ObservedAt: observedNow(), RetryAt: retry, SourceURL: sourceURL, SourceUpdatedAt: updated, ExpiresAt: validatorExpires}, nil
 }
 func (s *Service) neighbours(ctx context.Context, target Target, q Query) (Metric, error) {
 	_, asns, e := s.origins(ctx, target, q)

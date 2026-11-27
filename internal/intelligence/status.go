@@ -127,6 +127,9 @@ type CollectionStatus struct {
 }
 
 func (s *Service) upstreamName(raw string) string {
+	if s.routinatorURL != "" && strings.HasPrefix(raw, s.routinatorURL+"/") {
+		return "Routinator"
+	}
 	if raw == s.irrdURL {
 		return "IRRd"
 	}
@@ -239,6 +242,9 @@ func (a *Automatic) Status(store *catalog.Store) CollectionStatus {
 	}
 	for _, name := range names {
 		c := CheckCoverage{Name: name, Source: definitions[name].Source, Collection: map[string]int{}, Freshness: map[string]int{}}
+		if name == "rpki" {
+			c.Source = a.service.rpkiSource()
+		}
 		if name == "spamhaus_drop" {
 			c.Source = "Spamhaus DROP"
 		}

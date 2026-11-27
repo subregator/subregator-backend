@@ -231,3 +231,20 @@ func TestHistoricalChecksConfiguration(t *testing.T) {
 		t.Fatal(c.HistoricalChecks, err)
 	}
 }
+
+func TestRoutinatorConfiguration(t *testing.T) {
+	c, err := loadConfig(nil, envMap(nil), io.Discard)
+	if err != nil || c.RoutinatorURL != "" {
+		t.Fatal("legacy mode must remain default", err)
+	}
+	c, err = loadConfig(nil, envMap(map[string]string{"SUBREGATOR_ROUTINATOR_URL": "http://routinator:8323"}), io.Discard)
+	if err != nil || c.RoutinatorURL != "http://routinator:8323" || c.HistoryChecks != "" || c.HistoricalChecks != "" {
+		t.Fatal("local mode changed archive defaults", err)
+	}
+	for _, endpoint := range []string{"http://public.example.com", "http://user:secret@routinator", "http://routinator:65536"} {
+		_, err = loadConfig(nil, envMap(map[string]string{"SUBREGATOR_ROUTINATOR_URL": endpoint}), io.Discard)
+		if err == nil || strings.Contains(err.Error(), "secret") {
+			t.Fatal("invalid endpoint accepted or exposed")
+		}
+	}
+}

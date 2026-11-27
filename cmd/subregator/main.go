@@ -98,6 +98,11 @@ func run() error {
 			return err
 		}
 	}
+	if cfg.RoutinatorURL != "" {
+		if err := checks.EnableRoutinator(cfg.RoutinatorURL); err != nil {
+			return err
+		}
+	}
 	automatic := intelligence.NewAutomatic(checks)
 	checksDone := make(chan struct{})
 	go func() { defer close(checksDone); automatic.Run(ctx, store) }()

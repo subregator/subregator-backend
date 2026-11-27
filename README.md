@@ -81,3 +81,5 @@ See [subnet market and price history](docs/subnet-market.md) for exact-prefix se
 [Durable observation history](docs/observation-history.md): opt-in normalized check storage, conservative change bounds and cached-only REST/MCP queries.
 
 Collection diagnostics and counter units: [collection counters](docs/collection-metrics.md).
+
+Private current RPKI validation can use [Routinator](docs/rpki.md); RIPEstat remains the default until a bounded comparison pilot succeeds.

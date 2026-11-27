@@ -1,0 +1,8 @@
+services:
+  backend:
+    networks:
+      rpki: {}
+networks:
+  rpki:
+    external: true
+    name: subregator-rpki
