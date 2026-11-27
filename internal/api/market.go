@@ -58,6 +58,10 @@ func prefixRelation(requested, actual netip.Prefix) string {
 }
 
 func (s *service) market(ctx context.Context, v url.Values) (MarketResult, error) {
+	return s.marketData(ctx, v, true)
+}
+
+func (s *service) marketData(ctx context.Context, v url.Values, includeHistory bool) (MarketResult, error) {
 	out := MarketResult{Semantics: "provider_offers_not_ownership_fraud_or_sales; history_and_polls_are_exact_prefix_only; totals_are_quoted_charges_not_unreported_cost_guarantees"}
 	if err := parseFilters(v, "resource provider listing_id model currency billing_months limit offset snapshot after_id after_poll_id relation"); err != nil {
 		return out, err
@@ -147,6 +151,9 @@ func (s *service) market(ctx context.Context, v url.Values) (MarketResult, error
 		actual, _ := netip.ParsePrefix(*item.Resource.Prefix)
 		costs := prices(&item.Offer, actual.String())
 		out.Current.Items = append(out.Current.Items, MarketOffer{item, prefixRelation(prefix, actual), actual.String(), costs})
+	}
+	if !includeHistory {
+		return out, nil
 	}
 	eventFilters := url.Values{"resource": {out.Resource}}
 	for _, key := range []string{"provider", "listing_id", "after_id", "limit"} {

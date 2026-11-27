@@ -20,6 +20,8 @@ func (s *Service) Cached(ctx context.Context, q Query) (Report, error) {
 			b, expires, found, err := s.cache.CacheGet(ctx, key)
 			if err != nil {
 				s.persistenceFailed()
+				m.Status = "error"
+				m.Error = "Cached observation storage unavailable"
 			}
 			var cached Metric
 			if err == nil && found && json.Unmarshal(b, &cached) == nil {

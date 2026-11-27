@@ -1600,6 +1600,111 @@
           }
         }
       }
+    },
+    "/api/v1/report": {
+      "get": {
+        "summary": "Read a cached subnet report",
+        "description": "Read published exact-prefix sellers, existing cost calculations, current cached network checks and a limited timeline. No upstream collection. At most 2 MiB of JSON; each section is bounded to 512 KiB. A larger section is explicitly omitted and links to the underlying paginated endpoint. History enabled/disabled is separate from no observations, errors and pagination. Source publication and history policies apply on every request. MCP tool subnet_report accepts the same filters.",
+        "parameters": [
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "description": "Maximum current offers and timeline events in each section"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Current offer snapshot, required for stable continuation"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "description": "Existing policy-bound resource timeline cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permitted sections with explicit gaps; partial section failures preserve other data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubnetReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or non-public exact resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Offer snapshot changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unable to establish public resource eligibility",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5180,6 +5285,223 @@
         ],
         "additionalProperties": false,
         "description": "Process-local counters by fixed check type. External requests are budget admissions; HTTP/private requests count started attempts. Waits count individual waits, seconds are cumulative. Check outcomes exclude cache hits and deduplicated consumers."
+      },
+      "ReportNetwork": {
+        "type": "object",
+        "required": [
+          "current",
+          "drop"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/NetworkReport"
+          },
+          "drop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ReportMarketSection": {
+        "type": "object",
+        "required": [
+          "status",
+          "data",
+          "gaps",
+          "truncated",
+          "url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "partial",
+              "disabled",
+              "empty",
+              "error"
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarketCurrent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          }
+        },
+        "description": "A bounded section. Status describes availability, not safety. Gaps explain source scope, missing observations, disabled history, errors and byte truncation. URL reads the underlying section; next continues it. Sections above 512 KiB are omitted with explicit truncation and the underlying section URL."
+      },
+      "ReportNetworkSection": {
+        "type": "object",
+        "required": [
+          "status",
+          "data",
+          "gaps",
+          "truncated",
+          "url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "partial",
+              "disabled",
+              "empty",
+              "error"
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportNetwork"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          }
+        },
+        "description": "A bounded section. Status describes availability, not safety. Gaps explain source scope, missing observations, disabled history, errors and byte truncation. URL reads the underlying section; next continues it. Sections above 512 KiB are omitted with explicit truncation and the underlying section URL."
+      },
+      "ReportTimelineSection": {
+        "type": "object",
+        "required": [
+          "status",
+          "data",
+          "gaps",
+          "truncated",
+          "url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "partial",
+              "disabled",
+              "empty",
+              "error"
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimelineResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          }
+        },
+        "description": "A bounded section. Status describes availability, not safety. Gaps explain source scope, missing observations, disabled history, errors and byte truncation. URL reads the underlying section; next continues it. Sections above 512 KiB are omitted with explicit truncation and the underlying section URL."
+      },
+      "SubnetReport": {
+        "type": "object",
+        "required": [
+          "resource",
+          "generated_at",
+          "market",
+          "network",
+          "timeline",
+          "network_history",
+          "max_bytes",
+          "semantics"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "resource": {
+            "type": "string"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "market": {
+            "$ref": "#/components/schemas/ReportMarketSection"
+          },
+          "network": {
+            "$ref": "#/components/schemas/ReportNetworkSection"
+          },
+          "timeline": {
+            "$ref": "#/components/schemas/ReportTimelineSection"
+          },
+          "network_history": {
+            "type": "string",
+            "enum": [
+              "enabled",
+              "disabled"
+            ]
+          },
+          "max_bytes": {
+            "type": "integer",
+            "const": 2097152
+          },
+          "semantics": {
+            "type": "string"
+          }
+        },
+        "description": "Known exact public CIDR only, from permitted current listings or durable provider associations. Local/cache reads never trigger collection. generated_at is report assembly time, not a common source freshness date. Provider offers retain their own URLs, dates, terms and existing QuoteCosts; network observations and timeline retain source scope/dates/freshness/completeness. No safety score, ownership guarantee or completed-sale inference."
       }
     }
   }
