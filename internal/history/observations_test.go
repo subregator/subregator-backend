@@ -51,11 +51,15 @@ func TestObservationDurabilityReplayGapsAndOrdering(t *testing.T) {
 		save(recovered)
 		late := archiveFixture(resource, "spamhaus_drop", `"listed"`, at.Add(30*time.Second))
 		save(late)
-		if _, e := d.sql.Exec(`INSERT INTO check_cache SELECT 'eviction-'||g, '{}'::bytea,0,g FROM generate_series(1,2001) g ON CONFLICT DO NOTHING`); e != nil {
+		if _, e := d.sql.Exec(`INSERT INTO check_cache SELECT 'eviction-'||g, '{}'::bytea,0,g FROM generate_series(1,50001) g ON CONFLICT DO NOTHING`); e != nil {
 			t.Fatal(e)
 		}
 		if e := d.CachePut(ctx, "newest", json.RawMessage(`{}`), time.Now()); e != nil {
 			t.Fatal(e)
+		}
+		var retained bool
+		if e := d.sql.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM check_cache WHERE key='eviction-1')`).Scan(&retained); e != nil || retained {
+			t.Fatal("cache fixture did not trigger eviction", retained, e)
 		}
 		out, e := d.Observations(ctx, resource, 0, 200)
 		if e != nil {
