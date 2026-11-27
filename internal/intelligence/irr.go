@@ -94,12 +94,16 @@ func (s *Service) irrd(ctx context.Context, query string, variables map[string]a
 	if err := s.checkSourceLimit(ctx, s.irrdURL); err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, sourceBudgetKey{}, s.irrdURL)
-	release, err := s.acquireRequest(ctx)
-	if err != nil {
+	// Private mirror traffic shares HTTP slots, not external source quotas.
+	select {
+	case s.httpSlots <- struct{}{}:
+		defer func() { <-s.httpSlots }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if err := s.checkSourceLimit(ctx, s.irrdURL); err != nil {
 		return nil, err
 	}
-	defer release()
 	body, _ := json.Marshal(map[string]any{"query": query, "variables": variables})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.irrdURL, bytes.NewReader(body))
 	if err != nil {
@@ -123,6 +127,36 @@ func (s *Service) irrd(ctx context.Context, query string, variables map[string]a
 	return raw, nil
 }
 
+type irrMetadata struct {
+	ready      chan struct{}
+	data       json.RawMessage
+	observedAt time.Time
+	err        error
+}
+
+func (s *Service) mirrorMetadata(ctx context.Context, sources []string) (json.RawMessage, *time.Time, error) {
+	s.mu.Lock()
+	metadata := s.irrdMetadata
+	if metadata != nil && (metadata.observedAt.IsZero() || metadata.err == nil && time.Since(metadata.observedAt) < 5*time.Minute) {
+		s.mu.Unlock()
+		select {
+		case <-metadata.ready:
+			return metadata.data, &metadata.observedAt, metadata.err
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		}
+	}
+	metadata = &irrMetadata{ready: make(chan struct{})}
+	s.irrdMetadata = metadata
+	s.mu.Unlock()
+	data, err := s.irrd(ctx, `query($sources: [String!]) { databaseStatus(sources: $sources) { source objectClassFilter rpslDataUpdated } }`, map[string]any{"sources": sources})
+	s.mu.Lock()
+	metadata.data, metadata.err, metadata.observedAt = data, err, time.Now().UTC()
+	close(metadata.ready)
+	s.mu.Unlock()
+	return metadata.data, &metadata.observedAt, metadata.err
+}
+
 func (s *Service) irr(ctx context.Context, target Target) (Metric, error) {
 	const query = `query($prefix: IP!, $limit: Int!, $sources: [String!]) {
  rpslObjects(ipAny: $prefix, recordLimit: $limit, sources: $sources, objectClass: ["route", "route6"], rpkiStatus: [valid, invalid, not_found], scopeFilterStatus: [in_scope, out_scope_as, out_scope_prefix], routePreferenceStatus: [visible, suppressed]) {
@@ -136,13 +170,13 @@ func (s *Service) irr(ctx context.Context, target Target) (Metric, error) {
 	if err != nil {
 		return Metric{}, err
 	}
-	metadata, metadataError := s.irrd(ctx, `query($sources: [String!]) { databaseStatus(sources: $sources) { source objectClassFilter rpslDataUpdated } }`, map[string]any{"sources": sources})
+	metadata, metadataObservedAt, metadataError := s.mirrorMetadata(ctx, sources)
 	detail, err := normalizeIRR(routes, metadata, target, time.Now())
 	if err != nil {
 		return Metric{}, err
 	}
 	if metadataError == nil {
-		detail.MetadataObservedAt = observedNow()
+		detail.MetadataObservedAt = metadataObservedAt
 	}
 	b, _ := json.Marshal(detail)
 	m := Metric{IRR: detail, Data: b, ObservedAt: observedNow(), SourceURL: "https://api.subregator.com/api/v1/network?checks=irr&resource=" + url.QueryEscape(target.Value)}
