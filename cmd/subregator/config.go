@@ -14,26 +14,27 @@ import (
 )
 
 type config struct {
-	HistoryChecks   string
-	Spamhaus        bool
-	SpamhausKey     string
-	AbuseIPDB       bool
-	AbuseIPDBKey    string
-	IRRdURL         string
-	IRR             bool
-	RequestsRPS     int
-	MaxConcurrent   int
-	DatabaseURL     string
-	ChecksRPM       int
-	IPinfoLiteToken string
-	Addr            string
-	Snapshot        string
-	FeedsDir        string
-	Providers       string
-	Network         bool
-	CORSOrigin      string
-	LogFormat       string
-	LogLevel        slog.Level
+	HistoricalChecks string
+	HistoryChecks    string
+	Spamhaus         bool
+	SpamhausKey      string
+	AbuseIPDB        bool
+	AbuseIPDBKey     string
+	IRRdURL          string
+	IRR              bool
+	RequestsRPS      int
+	MaxConcurrent    int
+	DatabaseURL      string
+	ChecksRPM        int
+	IPinfoLiteToken  string
+	Addr             string
+	Snapshot         string
+	FeedsDir         string
+	Providers        string
+	Network          bool
+	CORSOrigin       string
+	LogFormat        string
+	LogLevel         slog.Level
 }
 
 func loadConfig(args []string, getenv func(string) string, output io.Writer) (config, error) {
@@ -46,6 +47,7 @@ func loadConfig(args []string, getenv func(string) string, output io.Writer) (co
 	c := config{IRRdURL: env("IRRD_URL", intelligence.DefaultIRRdURL)}
 	fs := flag.NewFlagSet("subregator", flag.ContinueOnError)
 	fs.SetOutput(output)
+	fs.StringVar(&c.HistoricalChecks, "historical-checks", env("HISTORICAL_CHECKS", ""), "Approved background historical snapshots; empty disables (SUBREGATOR_HISTORICAL_CHECKS)")
 	fs.StringVar(&c.HistoryChecks, "history-checks", env("HISTORY_CHECKS", ""), "Approved durable history checks; empty disables archive and publication (SUBREGATOR_HISTORY_CHECKS)")
 	fs.StringVar(&c.Addr, "addr", env("ADDR", "127.0.0.1:8080"), "HTTP listen address (SUBREGATOR_ADDR)")
 	c.DatabaseURL = env("DATABASE_URL", "postgresql://subregator@127.0.0.1:5432/subregator?sslmode=disable")

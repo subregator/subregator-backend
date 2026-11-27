@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/netip"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -62,7 +63,7 @@ func (a *Automatic) Run(ctx context.Context, store *catalog.Store) {
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	defer func() { cancel(); workers.Wait() }()
-	names := append(append([]string{}, automaticChecks...), "spamhaus_drop")
+	names := append(append(append([]string{}, automaticChecks...), a.service.historicalChecks...), "spamhaus_drop")
 	queues := map[string]chan checkWork{}
 	busy, cursors := map[string]bool{}, map[string]string{}
 	cancels := map[string]map[string]context.CancelFunc{}
@@ -97,7 +98,11 @@ func (a *Automatic) Run(ctx context.Context, store *catalog.Store) {
 							}
 						}
 					} else {
-						result.Metric = a.service.metric(workCtx, Target{Value: work.Key, Kind: "prefix"}, Query{Resource: work.Key, overview: work.Overview}, name)
+						query := Query{Resource: work.Key, overview: work.Overview}
+						if slices.Contains(historicalChecks, name) {
+							query = historicalQuery(work.Key, time.Now())
+						}
+						result.Metric = a.service.metric(workCtx, Target{Value: work.Key, Kind: "prefix"}, query, name)
 					}
 					select {
 					case results <- result:
@@ -226,6 +231,12 @@ func (a *Automatic) restoreSchedule(ctx context.Context, key string, names []str
 		}
 	}
 	r, _ := a.service.Cached(ctx, Query{Resource: key, Checks: automaticChecks})
+	for _, name := range a.service.historicalChecks {
+		q := historicalQuery(key, time.Now())
+		q.Checks = []string{name}
+		historical, _ := a.service.Cached(ctx, q)
+		r.Metrics = append(r.Metrics, historical.Metrics...)
+	}
 	a.mu.Lock()
 	a.jobs[key] = map[string]scheduledCheck{}
 	a.evidence[key] = map[string]Metric{}

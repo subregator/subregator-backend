@@ -210,3 +210,24 @@ func TestHistoryConfigDefaultAndPrecedence(t *testing.T) {
 		t.Fatal(e, c.HistoryChecks)
 	}
 }
+
+func TestHistoricalChecksConfiguration(t *testing.T) {
+	c, err := loadConfig(nil, func(key string) string {
+		if key == "SUBREGATOR_HISTORICAL_CHECKS" {
+			return "routing_history"
+		}
+		return ""
+	}, io.Discard)
+	if err != nil || c.HistoricalChecks != "routing_history" {
+		t.Fatal(c.HistoricalChecks, err)
+	}
+	c, err = loadConfig([]string{"-historical-checks="}, func(key string) string {
+		if key == "SUBREGATOR_HISTORICAL_CHECKS" {
+			return "routing_history"
+		}
+		return ""
+	}, io.Discard)
+	if err != nil || c.HistoricalChecks != "" {
+		t.Fatal(c.HistoricalChecks, err)
+	}
+}

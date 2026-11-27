@@ -96,6 +96,8 @@ assert len(market["history"]["items"]) == 1
 assert market["polls"]["items"][0]["complete"]
 with urllib.request.urlopen(base + "/api/v1/network/history?resource=1.1.1.0/24", timeout=2) as response:
     assert json.load(response)["items"] == []
+with urllib.request.urlopen(base + "/api/v1/timeline?resource=1.1.1.0/24", timeout=2) as response:
+    assert json.load(response)["items"] == []
 
 def rpc(payload, version=None):
     headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
@@ -114,7 +116,9 @@ market_rpc = rpc({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
 assert market_rpc["result"]["structuredContent"]["current"]["total"] == 1
 archive = rpc({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "network_history", "arguments": {"filters": {"resource": "1.1.1.0/24"}}}}, initialized["result"]["protocolVersion"])
 assert archive["result"]["structuredContent"]["items"] == []
-print("Non-root read-only container: feed, durable history, REST/MCP and default-off check archive passed")
+timeline = rpc({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "resource_timeline", "arguments": {"filters": {"resource": "1.1.1.0/24"}}}}, initialized["result"]["protocolVersion"])
+assert timeline["result"]["structuredContent"]["items"] == []
+print("Non-root read-only container: feed, durable history, REST/MCP, timeline and default-off check archive passed")
 
 import concurrent.futures, urllib.error
 payload = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "network_checks", "arguments": {}}}).encode()

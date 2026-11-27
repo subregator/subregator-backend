@@ -84,6 +84,9 @@ func run() error {
 	if e = checks.SetHistoryChecks(cfg.HistoryChecks); e != nil {
 		return e
 	}
+	if e = checks.SetHistoricalChecks(cfg.HistoricalChecks); e != nil {
+		return e
+	}
 	if cfg.Spamhaus {
 		checks.EnableSpamhaus(cfg.SpamhausKey)
 	}

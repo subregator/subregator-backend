@@ -73,3 +73,5 @@ Integration tests use isolated randomly named PostgreSQL schemas and clean up on
 `SUBREGATOR_SPAMHAUS=false` / `-spamhaus=false` keeps the licensed HTTPS source off. After product/quota/public-use approval, set `SUBREGATOR_SPAMHAUS_KEY` in the environment and enable the flag. A key alone does not enable collection. No key flag is provided. This product is distinct from DQS DNS/SIA. One first-address sample per prefix always has partial subnet coverage except single-host prefixes. See [blocklist contract and access gate](blocklists.md).
 
 See [durable observation history](observation-history.md) for the separate default-off retention/publication allowlist, source restrictions, conservative change bounds and PostgreSQL migration.
+
+`SUBREGATOR_HISTORICAL_CHECKS` / `-historical-checks` is an empty-by-default approved background-history list; see [timeline/import bounds](timeline.md).
