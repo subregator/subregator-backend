@@ -168,12 +168,15 @@ func normalizeRoutinator(raw json.RawMessage, prefix string, asn uint32) (json.R
 		return nil, time.Time{}, invalid
 	}
 	roas := []ROA{}
-	for _, group := range [][]routinatorVRP{v.VRPs.Matched, v.VRPs.ASN, v.VRPs.Length} {
+	for category, group := range [][]routinatorVRP{v.VRPs.Matched, v.VRPs.ASN, v.VRPs.Length} {
 		for _, vrp := range group {
 			rp, e := netip.ParsePrefix(vrp.Prefix)
 			n, ok := roaASN(json.RawMessage(strconv.Quote(vrp.ASN)))
 			length, e2 := strconv.Atoi(vrp.MaxLength)
 			if e != nil || e2 != nil || !ok || rp != rp.Masked() || rp.Bits() > p.Bits() || !rp.Contains(p.Addr()) || length < rp.Bits() || length > rp.Addr().BitLen() {
+				return nil, time.Time{}, invalid
+			}
+			if category == 0 && (n != asn || length < p.Bits()) || category == 1 && (n == asn || length < p.Bits()) || category == 2 && length >= p.Bits() {
 				return nil, time.Time{}, invalid
 			}
 			if len(roas) < 32 {

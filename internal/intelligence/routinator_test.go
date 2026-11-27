@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,7 +16,17 @@ import (
 func routinatorFixture(prefix string, asn uint32, state, reason, group string, generated time.Time) string {
 	vrps := map[string]any{"matched": []any{}, "unmatched_as": []any{}, "unmatched_length": []any{}}
 	if group != "" {
-		vrps[group] = []any{map[string]string{"asn": fmt.Sprintf("AS%d", asn), "prefix": prefix, "max_length": strings.Split(prefix, "/")[1]}}
+		vrp := map[string]string{"asn": fmt.Sprintf("AS%d", asn), "prefix": prefix, "max_length": strings.Split(prefix, "/")[1]}
+		if group == "unmatched_as" {
+			vrp["asn"] = fmt.Sprintf("AS%d", asn+1)
+		}
+		if group == "unmatched_length" {
+			p, _ := netip.ParsePrefix(prefix)
+			p = netip.PrefixFrom(p.Addr(), p.Bits()-1).Masked()
+			vrp["prefix"] = p.String()
+			vrp["max_length"] = strings.Split(p.String(), "/")[1]
+		}
+		vrps[group] = []any{vrp}
 	}
 	b, _ := json.Marshal(map[string]any{"generatedTime": generated.UTC(), "validated_route": map[string]any{"route": map[string]any{"prefix": prefix, "origin_asn": fmt.Sprintf("AS%d", asn)}, "validity": map[string]any{"state": state, "reason": reason, "VRPs": vrps}}})
 	return string(b)
@@ -182,5 +193,29 @@ func TestRoutinatorObservedOriginsRetainsBGPDependency(t *testing.T) {
 	legacy.restoreSchedule(context.Background(), target.Value, automaticChecks)
 	if legacy.Get(target.Value).RPKI.Source == "Routinator" {
 		t.Fatal("legacy restore retained local source")
+	}
+}
+
+func TestRoutinatorRejectsInconsistentVRPCategories(t *testing.T) {
+	for _, tc := range []struct{ name, group, field, value, state, reason string }{
+		{"matched_wrong_asn", "matched", "asn", "AS15169", "valid", ""},
+		{"matched_short_max_length", "matched", "max_length", "23", "valid", ""},
+		{"unmatched_as_same_asn", "unmatched_as", "asn", "AS13335", "invalid", "as"},
+		{"unmatched_length_permitted", "unmatched_length", "max_length", "24", "invalid", "length"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var raw map[string]any
+			json.Unmarshal([]byte(routinatorFixture("1.1.1.0/24", 13335, tc.state, tc.reason, tc.group, time.Now())), &raw)
+			vrps := raw["validated_route"].(map[string]any)["validity"].(map[string]any)["VRPs"].(map[string]any)
+			vrp := vrps[tc.group].([]any)[0].(map[string]any)
+			vrp[tc.field] = tc.value
+			if tc.field == "max_length" && tc.value == "23" {
+				vrp["prefix"] = "1.1.0.0/23"
+			}
+			b, _ := json.Marshal(raw)
+			if _, _, err := normalizeRoutinator(b, "1.1.1.0/24", 13335); err == nil {
+				t.Fatal("inconsistent VRP category accepted")
+			}
+		})
 	}
 }
