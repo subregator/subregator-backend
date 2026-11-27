@@ -34,7 +34,7 @@ func validTestURL(raw string, target Target) bool {
 	return false
 }
 
-func (s *Service) throughput(ctx context.Context, target Target, q Query) (Metric, error) {
+func (s *Service) throughput(ctx context.Context, target Target, q Query) (out Metric, err error) {
 	if !validTestURL(q.TestURL, target) {
 		return Metric{}, errors.New("matching public test URL required")
 	}
@@ -52,7 +52,19 @@ func (s *Service) throughput(ctx context.Context, target Target, q Query) (Metri
 	req.Header.Set("User-Agent", "Subregator/0.2 (+https://github.com/subregator/subregator-backend)")
 	req.Header.Set("Accept-Encoding", "identity")
 	started := time.Now()
+	status := 0
+	var bodyError error
+	defer func() {
+		requestError := err
+		if requestError == nil {
+			requestError = bodyError
+		}
+		s.recordHTTPRequest(ctx, q.TestURL, status, requestError, time.Since(started))
+	}()
 	response, e := s.client.Do(req)
+	if response != nil {
+		status = response.StatusCode
+	}
 	if e != nil {
 		return Metric{}, errors.New("test download unavailable")
 	}
@@ -67,7 +79,7 @@ func (s *Service) throughput(ctx context.Context, target Target, q Query) (Metri
 	const limit = 8 << 20
 	count, readError := io.Copy(io.Discard, io.LimitReader(response.Body, limit))
 	elapsed := time.Since(bodyStart).Seconds()
-	s.recordRequest(q.TestURL, response.StatusCode, readError, time.Since(started))
+	bodyError = readError
 	if count == 0 || elapsed <= 0 {
 		return Metric{}, ErrNoData
 	}

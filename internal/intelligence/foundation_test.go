@@ -159,7 +159,7 @@ func TestCollectionStatusConcurrentAndUpstreamCounters(t *testing.T) {
 	s := mockService(t, func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Path {
 		case "/auth":
-			return response(403, "private upstream detail"), nil
+			return response(403, "secret_fixture_value upstream detail"), nil
 		case "/quota":
 			return response(429, `{}`), nil
 		case "/missing":
@@ -180,7 +180,7 @@ func TestCollectionStatusConcurrentAndUpstreamCounters(t *testing.T) {
 	}
 	wg.Wait()
 	for _, path := range []string{"/auth", "/missing", "/ok", "/quota"} {
-		s.readSource(context.Background(), "https://stat.ripe.net"+path+"?token=private", "private", 1024, true)
+		s.readSource(context.Background(), "https://stat.ripe.net"+path+"?token=secret_fixture_value", "secret_fixture_value", 1024, true)
 	}
 	s.persistenceFailed()
 	stats := a.Status(store)
@@ -188,7 +188,7 @@ func TestCollectionStatusConcurrentAndUpstreamCounters(t *testing.T) {
 		t.Fatalf("incorrect bounded counters: %+v", stats)
 	}
 	data, _ := json.Marshal(stats)
-	if strings.Contains(string(data), "private") {
+	if strings.Contains(string(data), "secret_fixture_value") {
 		t.Fatal("upstream URL or credential exposed")
 	}
 	s.rpm = 1

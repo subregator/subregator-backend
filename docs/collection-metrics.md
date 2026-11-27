@@ -1,0 +1,17 @@
+# Collection counters
+
+`GET /api/v1/network/status` and MCP `network_status` expose the same process-local counters. All counters reset at restart; `process_started_at` identifies the measurement interval. Compare deltas only within one interval. These are collection diagnostics, not resource safety findings. Existing queue, age and freshness fields remain authoritative for coverage.
+
+`upstreams` retains its fixed source labels. `requests` counts started HTTP attempts, including redirects and failed transports; `duration_ms` is cumulative milliseconds. `failures` counts failed HTTP attempts other than no-data HTTP 404 and redirect referrals. Previously a refused intermediate RDAP redirect was included as a failure, even when the allowed referral eventually succeeded; that counting defect is corrected. `redirects` counts every received 3xx, including referrals later rejected by RDAP policy. `rate_limited`, `auth_failures` and `no_data` remain HTTP response counters. None is a final check outcome.
+
+`work` groups counters by the fixed capability/check name, plus `spamhaus_drop` and `other`; resources, IPs and URLs never become labels:
+
+- `http_attempts`, `redirects`, `http_failures`: HTTP attempt outcomes, with the same redirect/404 exclusion as the upstream counters. A valid JSON response rejected by a source normalizer can succeed at HTTP level and fail the check.
+- `external_requests`: external budget admissions. An admitted request consumes budget even if it is canceled before transport or a durable DROP reservation fails. This is budget spend, not a count of completed responses.
+- `private_requests`: started IRRd/Routinator HTTP attempts, excluded from external budget admissions. Validator status and validity reads are separate attempts.
+- `successful_checks`, `failed_checks`, `no_data_checks`, `deferred_checks`: fetched metric outcomes after the source adapter, not cache hits, waiting duplicate consumers or public cached reads. Partial successful metrics remain successful adapter completions; use the existing freshness/completeness fields to assess their coverage. DROP counts dataset refreshes, not each prefix tested against the shared dataset. Deferred includes local budget limits, pending, disabled and unconfigured results. Failures include transport, source rejection, malformed source data and cancellation; no-data is separate.
+- `budget_denials`: immediate external budget rejections. `budget_waits`: individual automatic scheduler wait episodes, which may repeat after wakeups. `budget_wait_seconds`: cumulative seconds, including canceled waits; it excludes HTTP slot and private-service concurrency waits.
+
+Dependency requests belong to the dependency's check when a separate metric is fetched (for example `prefix_overview`); requests made inside one adapter retain that adapter's check type. This makes remaining RIPEstat origin-discovery and routing requests measurable independently from local RPKI validation. Bootstrap/contact fallback requests inside RDAP belong to `rdap`. DROP covers shared IPv4/IPv6 datasets under one fixed type. No new retry, source access, HTTP budget or collection policy is introduced.
+
+For an interval, compare `work` deltas for `prefix_overview.external_requests`, `routing_status.external_requests` and `rpki.external_requests` against `rpki.private_requests`. Continue to inspect per-check coverage and oldest age; reduced HTTP spend alone does not establish fresh or complete observations.

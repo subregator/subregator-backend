@@ -77,3 +77,5 @@ Follow the [backend roadmap issues](https://github.com/subregator/subregator-bac
 See [subnet market and price history](docs/subnet-market.md) for exact-prefix seller comparison, quoted costs, provider gaps, REST/MCP pagination and explicit parent/child relationships.
 
 [Durable observation history](docs/observation-history.md): opt-in normalized check storage, conservative change bounds and cached-only REST/MCP queries.
+
+Collection diagnostics and counter units: [collection counters](docs/collection-metrics.md).

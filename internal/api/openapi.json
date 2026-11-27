@@ -3090,11 +3090,13 @@
           },
           "requests": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "HTTP attempts started in this process, including redirects and failed transports."
           },
           "failures": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Failed HTTP attempts, excluding no-data 404 and redirect referrals. Use work.failed_checks for final check outcomes."
           },
           "rate_limited": {
             "type": "integer",
@@ -3110,7 +3112,13 @@
           },
           "duration_ms": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Cumulative attempt duration in milliseconds."
+          },
+          "redirects": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "HTTP redirect responses, including refused referrals; not final check failures."
           }
         },
         "required": [
@@ -3120,7 +3128,8 @@
           "rate_limited",
           "auth_failures",
           "no_data",
-          "duration_ms"
+          "duration_ms",
+          "redirects"
         ],
         "additionalProperties": false
       },
@@ -3208,6 +3217,12 @@
             "enum": [
               "per_check_ttl"
             ]
+          },
+          "work": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckWorkStats"
+            }
           }
         },
         "required": [
@@ -3228,7 +3243,8 @@
           "semantics",
           "due_jobs",
           "running_jobs",
-          "scheduler_policy"
+          "scheduler_policy",
+          "work"
         ],
         "additionalProperties": false,
         "description": "Process-local collection health for per-check TTL scheduling. Source Retry-After and DROP reservations survive cache eviction in separate storage. Counters reset on restart; no prefixes, credentials or arbitrary upstream URLs are returned."
@@ -5063,6 +5079,107 @@
             "minimum": 0
           }
         }
+      },
+      "CheckWorkStats": {
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string",
+            "enum": [
+              "abuse",
+              "allocation_history",
+              "announced_prefixes",
+              "asn_neighbours",
+              "asn_overview",
+              "asn_rank",
+              "asn_relationships",
+              "dns_blocklists",
+              "geolocation",
+              "ipinfo_lite",
+              "irr",
+              "looking_glass",
+              "other",
+              "ping",
+              "prefix_overview",
+              "rdap",
+              "registration",
+              "registration_history",
+              "routing_history",
+              "routing_status",
+              "rpki",
+              "spamhaus_drop",
+              "spamhaus_zen",
+              "throughput",
+              "traceroute",
+              "transfer_history"
+            ]
+          },
+          "http_attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "redirects": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "http_failures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "external_requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "private_requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "successful_checks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed_checks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "no_data_checks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deferred_checks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "budget_denials": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "budget_waits": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "budget_wait_seconds": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "check",
+          "http_attempts",
+          "redirects",
+          "http_failures",
+          "external_requests",
+          "private_requests",
+          "successful_checks",
+          "failed_checks",
+          "no_data_checks",
+          "deferred_checks",
+          "budget_denials",
+          "budget_waits",
+          "budget_wait_seconds"
+        ],
+        "additionalProperties": false,
+        "description": "Process-local counters by fixed check type. External requests are budget admissions; HTTP/private requests count started attempts. Waits count individual waits, seconds are cumulative. Check outcomes exclude cache hits and deduplicated consumers."
       }
     }
   }

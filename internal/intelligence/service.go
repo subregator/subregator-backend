@@ -126,6 +126,7 @@ type Service struct {
 	inspectSlots        chan struct{}
 	measurementSlots    chan struct{}
 	measurementPollAt   time.Time
+	workStats           map[string]CheckWorkStats
 	stats               map[string]UpstreamStats
 	startedAt           time.Time
 	budgetDenials       uint64
@@ -361,6 +362,14 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		turn := !automatic || len(s.budgetQueue) > 0 && s.budgetQueue[0] == ticket
 		if s.used < s.rpm && turn && (!automatic || s.automaticUsed < automaticLimit) {
 			s.used++
+			name := checkWorkName(ctx)
+			if s.workStats == nil {
+				s.workStats = map[string]CheckWorkStats{}
+			}
+			stats := s.workStats[name]
+			stats.Check = name
+			stats.ExternalRequests++
+			s.workStats[name] = stats
 			if automatic {
 				s.automaticUsed++
 			}
@@ -377,6 +386,14 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		if !automatic {
 			s.mu.Lock()
 			s.budgetDenials++
+			name := checkWorkName(ctx)
+			if s.workStats == nil {
+				s.workStats = map[string]CheckWorkStats{}
+			}
+			stats := s.workStats[name]
+			stats.Check = name
+			stats.BudgetDenials++
+			s.workStats[name] = stats
 			s.mu.Unlock()
 			return nil, ErrBusy
 		}
@@ -385,13 +402,13 @@ func (s *Service) acquireRequest(ctx context.Context) (func(), error) {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			s.recordBudgetWait(time.Since(started))
+			s.recordWorkBudgetWait(ctx, time.Since(started))
 			return nil, ctx.Err()
 		case <-timer.C:
-			s.recordBudgetWait(time.Since(started))
+			s.recordWorkBudgetWait(ctx, time.Since(started))
 		case <-changed:
 			timer.Stop()
-			s.recordBudgetWait(time.Since(started))
+			s.recordWorkBudgetWait(ctx, time.Since(started))
 		}
 	}
 }
@@ -424,7 +441,7 @@ func (s *Service) readRequest(ctx context.Context, r *http.Request, auth string,
 	}
 	started := time.Now()
 	status := 0
-	defer func() { s.recordRequest(rawURL, status, err, time.Since(started)) }()
+	defer func() { s.recordHTTPRequest(ctx, rawURL, status, err, time.Since(started)) }()
 	r.Header.Set("User-Agent", "Subregator/0.2 (+https://github.com/subregator/subregator-backend)")
 	r.Header.Set("Accept", "application/json, application/rdap+json")
 	if auth != "" {
@@ -436,6 +453,9 @@ func (s *Service) readRequest(ctx context.Context, r *http.Request, auth string,
 	}
 	response, e := s.client.Do(r)
 	if e != nil {
+		if response != nil {
+			status = response.StatusCode
+		}
 		if response != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
 			if location, err := response.Location(); err == nil {
 				return nil, &sourceRedirect{location.String()}
@@ -497,7 +517,9 @@ func (s *Service) ripe(ctx context.Context, endpoint string, params url.Values) 
 	}
 	return Metric{SourceURL: u, ObservedAt: observedNow(), Data: envelope.Data}, nil
 }
-func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Metric) Metric {
+func (s *Service) fetchMetric(ctx context.Context, target Target, q Query, m Metric) (out Metric) {
+	ctx = context.WithValue(ctx, checkWorkKey{}, m.Name)
+	defer func() { s.recordCheck(ctx, out) }()
 	var result Metric
 	var e error
 	switch m.Name {
